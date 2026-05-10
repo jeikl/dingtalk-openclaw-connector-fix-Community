@@ -69,22 +69,6 @@ Before you start, make sure you have:
 
 > If below this version, upgrade with: `npm install -g openclaw`
 
-### One-Click Install + QR Auth (Recommended)
-
-```bash
-npx -y @dingtalk-real-ai/dingtalk-connector install
-```
-
-During installation, the terminal will display a DingTalk authorization QR code. Scan it with the **DingTalk mobile app** and tap "Create Bot" to complete authorization.
-
-When you see `Success! Bot configured.`, authorization is complete. Then restart the Gateway:
-
-```bash
-openclaw gateway restart
-```
-
-> 💡 **Scan failure does not affect installation**: Even if the QR flow fails, plugin dependencies will still be installed. See [Manual Setup Guide](docs/DINGTALK_MANUAL_SETUP.md) to complete configuration.
-
 ---
 
 ## Uninstall Official Plugin (avoid conflicts)
@@ -104,7 +88,9 @@ openclaw gateway restart
 
 ---
 
-## Deployment (Manual Build)
+## Manual Build & Deployment
+
+This version requires manual compilation (community fix, not published to npm):
 
 ```bash
 # 1. Clone repo
@@ -112,9 +98,16 @@ git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 
 # 2. Install, build & pack
+
+# npm
 npm install
 npm run build
 npm pack
+
+# or pnpm
+pnpm install
+pnpm run build
+pnpm pack
 
 # 3. Install to OpenClaw and restart
 openclaw plugins install dingtalk-real-ai-dingtalk-connector-0.8.20-fix6.tgz

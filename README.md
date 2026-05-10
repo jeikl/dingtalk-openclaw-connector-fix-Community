@@ -69,22 +69,6 @@
 
 > 如低于此版本，执行 `npm install -g openclaw` 升级。
 
-### 一键安装 + 扫码授权（推荐）
-
-```bash
-npx -y @dingtalk-real-ai/dingtalk-connector install
-```
-
-安装过程中终端会显示钉钉授权二维码，使用**钉钉手机 App** 扫码，点击「一键创建新机器人」即可完成授权。
-
-看到 `Success! Bot configured.` 即表示授权完成。之后重启 Gateway：
-
-```bash
-openclaw gateway restart
-```
-
-> 💡 扫码失败不影响安装：即使扫码流程出现问题（如超时、二维码无法显示等），插件本身仍会正常安装。你可以稍后参考 [手动配置指南](docs/DINGTALK_MANUAL_SETUP.md) 完成凭证配置。
-
 ---
 
 ## 卸载官方插件（避免冲突）
@@ -104,7 +88,9 @@ openclaw gateway restart
 
 ---
 
-## 部署（手动编译）
+## 手动构建与部署
+
+本版本需要手动编译安装（社区修复版，不在 npm 发布）：
 
 ```bash
 # 1. 克隆仓库
@@ -112,9 +98,16 @@ git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 
 # 2. 安装依赖 & 构建 & 打包
+
+# npm
 npm install
 npm run build
 npm pack
+
+# 或者 pnpm
+pnpm install
+pnpm run build
+pnpm pack
 
 # 3. 安装到 OpenClaw 并重启
 openclaw plugins install dingtalk-real-ai-dingtalk-connector-0.8.20-fix6.tgz
