@@ -85,6 +85,10 @@ const DingtalkSharedConfigShape = {
   enableMediaUpload: z.boolean().optional(),
   systemPrompt: z.string().optional(),
   groupReplyMode: GroupReplyModeSchema,
+  /** AI Card 模板 ID，不填则使用官方默认模板 */
+  cardTemplateId: z.string().optional(),
+  /** AI Card 内容变量名，对应卡片模板中的变量字段，不填默认 msgContent */
+  cardContentVar: z.string().optional().default("msgContent"),
 };
 
 /**

@@ -33,6 +33,34 @@
 
 ---
 
+## ✨ 增强功能
+
+- 🔧 钉钉在私聊和群聊发送图文并茂的内容指令：
+请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能。如果是直链图片，需要下载到你当前的工作区的output文件夹下，如果是本地文件，那么就复制到你当前的工作区的output文件夹下，然后用markdown语法发送本地路径图片，带上文字描述。
+
+- 🎨 支持自定义 AI Card 模板，可使用本人预制的卡片（含内容复制按钮），不填则使用官方默认卡片：
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "clientId": "你的clientId",
+    "clientSecret": "你的clientSecret",
+    "cardTemplateId": "07a7b2db-291c-4893-a7ab-d5cd266d0a32.schema",
+    "cardContentVar": "content"
+  }
+}
+```
+
+| 参数 | 说明 |
+|------|------|
+| `cardTemplateId` | AI Card 模板 ID，不填则使用官方默认模板 |
+| `cardContentVar` | 卡片内容变量名（对应模板中的字段），不填默认 `msgContent` |
+
+> 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建，并添加与 `cardContentVar` 同名的变量字段。
+
+---
+
 ## 为什么 Fork？
 
 由于钉钉官方连接器那拉稀的仓库更新与 Bug 修复速度，所以 fork 了此仓库。
@@ -50,13 +78,6 @@
 | 基础版本 | 官方 v0.8.20，功能完全一致 |
 | 修复内容 | 官方一直不修的 Bug（见上方最近修复） |
 | 维护方式 | 社区维护，持续跟进官方更新 |
-
----
-
-## ✨ 增强功能
-
-- 🔧 钉钉在私聊和群聊发送图文并茂的内容指令：
-请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能。如果是直链图片，需要下载到你当前的工作区的output文件夹下，如果是本地文件，那么就复制到你当前的工作区的output文件夹下，然后用markdown语法发送本地路径图片，带上文字描述。
 
 ---
 
@@ -94,7 +115,7 @@ openclaw gateway restart
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
+git clone https://ghfast.top/https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 
 # 2. 安装依赖 & 构建 & 打包

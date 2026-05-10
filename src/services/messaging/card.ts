@@ -27,7 +27,8 @@ export function getActiveCardForConversation(openConversationId: string): AICard
 
 // ============ 常量 ============
 
-const AI_CARD_TEMPLATE_ID = "02fcf2f4-5e02-4a85-b672-46d1f715543e.schema";
+const DEFAULT_CARD_TEMPLATE_ID = "02fcf2f4-5e02-4a85-b672-46d1f715543e.schema";
+const DEFAULT_CARD_CONTENT_VAR = "msgContent";
 
 /**
  * 钉钉卡片 API 的最大 QPS（官方限制约 40 次/秒）。
@@ -268,17 +269,19 @@ export async function createAICardForTarget(
       ? `群聊 ${target.openConversationId}`
       : `用户 ${target.userId}`;
 
+  const cardTemplateId = config.cardTemplateId || DEFAULT_CARD_TEMPLATE_ID;
+
   try {
     const token = await getAccessToken(config);
     const cardInstanceId = `card_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
     log?.info?.(
-      `[DingTalk][AICard] 开始创建卡片：${targetDesc}, outTrackId=${cardInstanceId}`,
+      `[DingTalk][AICard] 开始创建卡片：${targetDesc}, outTrackId=${cardInstanceId}, templateId=${cardTemplateId}`,
     );
 
     // 1. 创建卡片实例
     const createBody = {
-      cardTemplateId: AI_CARD_TEMPLATE_ID,
+      cardTemplateId: cardTemplateId,
       outTrackId: cardInstanceId,
       cardData: {
           cardParamMap: {
@@ -365,6 +368,7 @@ export async function streamAICard(
   config?: DingtalkConfig,
   log?: any,
 ): Promise<void> {
+  const contentVar = (config?.cardContentVar as string) || DEFAULT_CARD_CONTENT_VAR;
   // 防御 null card（createAICardForTarget 失败返回 null，调用方可能用 as any 绕过类型检查）
   if (!card) {
     log?.warn?.(`[DingTalk][AICard] streamAICard 收到 null card，跳过更新`);
@@ -386,10 +390,10 @@ export async function streamAICard(
       cardData: {
         cardParamMap: {
           flowStatus: AICardStatus.INPUTING,
-          msgContent: content,
+          [contentVar]: content,
           staticMsgContent: "",
           sys_full_json_obj: JSON.stringify({
-            order: ["msgContent"],
+            order: [contentVar],
           }),
           config: JSON.stringify({ autoLayout: true }),
         },
@@ -439,7 +443,7 @@ export async function streamAICard(
   const body = {
     outTrackId: card.cardInstanceId,
     guid: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    key: "msgContent",
+    key: contentVar,
     content: fixedContent,
     isFull: true,
     isFinalize: finished,
@@ -508,6 +512,7 @@ export async function finishAICard(
   config?: DingtalkConfig,
   log?: any,
 ): Promise<void> {
+  const contentVar = (config?.cardContentVar as string) || DEFAULT_CARD_CONTENT_VAR;
   // 确保 token 有效
   if (config) {
     await ensureValidToken(card, config);
@@ -524,10 +529,10 @@ export async function finishAICard(
     cardData: {
       cardParamMap: {
         flowStatus: AICardStatus.FINISHED,
-        msgContent: fixedContent,
+        [contentVar]: fixedContent,
         staticMsgContent: "",
         sys_full_json_obj: JSON.stringify({
-          order: ["msgContent"],
+          order: [contentVar],
         }),
         config: JSON.stringify({ autoLayout: true }),
       },

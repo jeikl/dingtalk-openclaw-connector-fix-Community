@@ -33,6 +33,34 @@ Full fix log: [FIXES.md](FIXES.md)（[🇨🇳 中文](FIXES.en.md)）
 
 ---
 
+## ✨ Enhanced Features
+
+- 🔧 Rich text + image messages in DingTalk private chat and group chat:
+请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能。如果是直链图片，需要下载到你当前的工作区的output文件夹下，如果是本地文件，那么就复制到你当前的工作区的output文件夹下，然后用markdown语法发送本地路径图片，带上文字描述。
+
+- 🎨 Custom AI Card template support for user-prebuilt cards (with copy button), uses official default card if not set:
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "clientId": "your-clientId",
+    "clientSecret": "your-clientSecret",
+    "cardTemplateId": "your-card-template-id.schema",
+    "cardContentVar": "card-content-var-name"
+  }
+}
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `cardTemplateId` | AI Card template ID, uses official default if not set |
+| `cardContentVar` | Card content variable name (matches your template field), defaults to `msgContent` |
+
+> Card template must be created in [DingTalk Open Platform](https://open.dingtalk.com/) with a variable field matching `cardContentVar`.
+
+---
+
 ## Why Fork?
 
 Due to the sluggish pace of the official DingTalk connector's updates and bug fixes, this repository was forked to keep up with critical fixes.
@@ -50,13 +78,6 @@ Community contributions (features & bug fixes) are always welcome — submit a P
 | Base | Official v0.8.20, fully identical features |
 | Fixes | Bugs the official team hasn't addressed (see recent fixes above) |
 | Maintenance | Community maintained, continuously tracking official updates |
-
----
-
-## ✨ Enhanced Features
-
-- 🔧 Rich text + image messages in DingTalk private chat and group chat:
-请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能。如果是直链图片，需要下载到你当前的工作区的output文件夹下，如果是本地文件，那么就复制到你当前的工作区的output文件夹下，然后用markdown语法发送本地路径图片，带上文字描述。
 
 ---
 
