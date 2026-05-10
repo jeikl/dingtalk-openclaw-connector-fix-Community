@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(Get-ChildItem -Path \"E:\\\\dingtalk-openclaw-connector\\\\openclaw\" -Directory)",
-      "Bash(Select-Object -ExpandProperty Name)"
+      "Bash(Select-Object -ExpandProperty Name)",
+      "Bash(git -C \"e:\\\\dingtalk-openclaw-connector\" diff --stat FIXES.md)",
+      "Bash(git -C \"e:\\\\dingtalk-openclaw-connector\" add FIXES.md)",
+      "Bash(git -C \"e:\\\\dingtalk-openclaw-connector\" commit --amend --no-edit)",
+      "Bash(git -C \"e:\\\\dingtalk-openclaw-connector\" add README.md)"
     ]
   }
 }
