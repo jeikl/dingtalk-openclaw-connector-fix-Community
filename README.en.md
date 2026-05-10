@@ -1,124 +1,87 @@
-<div align="center">
-  <img alt="DingTalk" src="https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-openclaw-connector/main/docs/images/dingtalk.svg" width="72" height="72" />
-  <h1>OpenClaw DingTalk Plugin</h1>
-  <p>Official DingTalk channel plugin for OpenClaw, developed and maintained by the DingTalk team.<br/>It seamlessly connects your OpenClaw Agent to DingTalk, enabling it to directly send/receive messages, manage docs, calendars, tasks, and more.</p>
+# dingtalk-openclaw-connector（Community Maintained Fork）
 
-  <p>
-    <a href="https://www.npmjs.com/package/@dingtalk-real-ai/dingtalk-connector"><img src="https://img.shields.io/npm/v/@dingtalk-real-ai/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
-    <a href="https://www.npmjs.com/package/@dingtalk-real-ai/dingtalk-connector"><img src="https://img.shields.io/npm/dm/@dingtalk-real-ai/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm downloads" /></a>
-    <a href="https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/blob/main/LICENSE"><img src="https://img.shields.io/github/license/DingTalk-Real-AI/dingtalk-openclaw-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="license" /></a>
-  </p>
-
-  <p>
-    <a href="README.md">简体中文</a> •
-    <a href="CHANGELOG.md">Changelog</a> •
-    <a href="https://openclaw.ai/">OpenClaw Website</a>
-  </p>
-</div>
+> Forked from the official [@dingtalk-real-ai/dingtalk-connector](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector), based on **v0.8.20**. Maintained by the community, tracking and fixing bugs the official team hasn't addressed.
 
 ---
 
-## Features
+## About
 
-This plugin provides comprehensive DingTalk integration for OpenClaw:
+Due to the sluggish pace of the official DingTalk connector's updates and bug fixes, this repository was forked to keep up with critical fixes.
 
-| Category | Capabilities |
-|----------|-------------|
-| 📄 Docs | Create, append, search, and list DingTalk documents |
-| 🔔 DING | Send urgent DING reminders to users/groups |
-| 💬 Messaging | Receive group/DM messages, auto-reply, send text/Markdown, @mentions |
-| ✅ Tasks | Create personal tasks, check status, set deadlines |
-| 📊 AI Sheets | Create sheets, read/write rows, conditional queries |
-| 📅 Calendar | Calendar management, event management (create/query/modify/delete/search), attendee management, free/busy queries |
-| 📝 Reports | Submit daily/weekly reports, query history |
+This version is identical to the official release in functionality, with only community-contributed bug fixes applied. All changes are fully documented in [FIXES.md](FIXES.md).
 
-Additionally, the plugin supports:
+For full feature descriptions, installation and configuration guides, see the [official README](README_DINGTALK_OFFICIAL.md).
 
-- 🌊 **AI Card Streaming**: Typewriter-style live streaming responses within message cards
-- 📱 **Interactive Cards**: Real-time status updates (Thinking/Generating/Complete), confirmation buttons for sensitive operations
-- 🔒 **Permission Policies**: Flexible access control policies for DMs and group chats
-- ⚙️ **Multi-Agent Routing**: Connect multiple bots to different Agents for specialized services
-- 🖼️ **Rich Media**: Receive images/audio/file attachments, auto-upload local images
-- 🔄 **Session Management**: Multi-turn conversation context, isolated sessions for DMs/groups
+**Bugs fixed using Claude Code (official AI model) to ensure maximum fix quality.**
 
-> 🚧 **Coming Soon** — The following capabilities are under active development!
-
-| Category | Capabilities |
-|----------|-------------|
-| ✅ Tasks | Create group tasks, check status, set deadlines |
-| 📁 Drive | Upload/download files to DingTalk Drive |
+Community contributions (features & bug fixes) are always welcome — submit a PR anytime!
 
 ---
 
-## Security & Risk Warnings (Read Before Use)
+## Differences from Official
 
-This plugin integrates with OpenClaw AI automation capabilities and carries inherent risks such as model hallucinations, unpredictable execution, and prompt injection. After you authorize DingTalk permissions, OpenClaw will act under your user identity within the authorized scope, which may lead to high-risk consequences such as leakage of sensitive data or unauthorized operations. Please use with caution.
+This version is based on official **v0.8.20**, with all official features intact, only the community-hesistant bugs fixed.
 
-To reduce these risks, the plugin enables default security protections at multiple layers. However, these risks still exist. **We strongly recommend that you do not proactively modify any default security settings**; once relevant restrictions are relaxed, the risks will increase significantly, and you will bear the consequences.
+**Recent Fixes:**
+- 🔧 Fix AI Card flashing and repeated re-rendering caused by duplicate intermediate messages after Agent multi-round loop completes (2026-05-11)
+- 🐛 Fix OpenClaw 4.29+ causing DingTalk plugin to fail, showing "✅ 任务执行完成（无文本输出）" in group chat @Agent (2026-05-11)
+- 🌐 Fix WebSocket phantom reconnect caused by unregistered Pong listener, from [PR #566](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/566) by [Majorshi](https://github.com/Majorshi) (2026-05-08)
 
-We recommend using the DingTalk bot connected to OpenClaw as a **personal conversational assistant**. Avoid deploying it directly in enterprise production environments. If you plan to use it with a company account, please comply with your company's information security policies.
-
-> By using this plugin, you are deemed to have fully understood and voluntarily assumed all related risks and responsibilities.
+All fixes: [FIXES.md](FIXES.md).
 
 ---
 
-## Requirements & Installation
+## Official Docs
 
-Before you start, make sure you have:
+- [Official README (Chinese)](README_DINGTALK_OFFICIAL.md)
+- [Official GitHub repo](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector)
+- [npm package](https://www.npmjs.com/package/@dingtalk-real-ai/dingtalk-connector)
+- [OpenClaw DingTalk Plugin Guide](https://alidocs.dingtalk.com/i/nodes/2Amq4vjg89GEno0zfPqoPGqdV3kdP0wQ?utm_scene=team_space)
+- [OpenClaw Official Site](https://openclaw.ai/)
 
-- **OpenClaw**: Installed and running properly. Visit the [OpenClaw website](https://openclaw.ai/) for details.
-- **Version**: OpenClaw ≥ **2026.4.9**. Check with `openclaw -v`.
+---
 
-> If below this version, upgrade with: `npm install -g openclaw`
+## Uninstall Official Plugin (avoid conflicts)
 
-### One-Click Install + QR Auth (Recommended)
+Remove the official plugin before installing this version:
 
 ```bash
-npx -y @dingtalk-real-ai/dingtalk-connector install
-```
+# List installed plugins
+openclaw plugins list
 
-During installation, the terminal will display a DingTalk authorization QR code. Scan it with the **DingTalk mobile app** and tap "Create Bot" to complete authorization.
+# Uninstall official version
+openclaw plugins uninstall dingtalk-connector
 
-When you see `Success! Bot configured.`, the authorization is complete. Then restart the Gateway:
-
-```bash
+# Restart to apply changes
 openclaw gateway restart
 ```
 
-> 💡 **Scan failure does not affect installation**: Even if the QR flow fails, plugin dependencies will still be installed. See [Manual Setup Guide](docs/DINGTALK_MANUAL_SETUP.md) to complete configuration.
+---
+
+## Deployment
+
+```bash
+# 1. Clone repo
+git clone https://github.com/your-username/dingtalk-openclaw-connector.git
+cd dingtalk-openclaw-connector
+
+# 2. Install, build & pack (npm)
+npm install
+npm run build
+npm pack
+
+# or pnpm
+pnpm install
+pnpm run build
+pnpm pack
+
+# 3. Install to OpenClaw and restart
+openclaw plugins install dingtalk-real-ai-dingtalk-connector-0.8.20-fix6.tgz
+openclaw gateway restart
+```
 
 ---
 
-## Usage Guide
+## Version
 
-[OpenClaw DingTalk Plugin User Guide](https://alidocs.dingtalk.com/i/nodes/2Amq4vjg89GEno0zfPqoPGqdV3kdP0wQ?utm_scene=team_space)
-
----
-
-## Advanced Documentation
-
-- [Manual Setup Guide](docs/DINGTALK_MANUAL_SETUP.md) — Configure credentials manually
-- [DingTalk DEAP Agent Integration](docs/DEAP_AGENT_GUIDE.en.md) — Local device operation capabilities
-- [Multi-Agent Routing](https://gist.github.com/smallnest/c5c13482740fd179e40070e620f66a52) — Bind multiple bots to different Agents
-- [Troubleshooting](docs/TROUBLESHOOTING.md) — Installation and usage issue resolution
-
----
-
-## Contributing
-
-Community contributions are welcome! If you find a bug or have feature suggestions, please submit an [Issue](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/issues) or Pull Request.
-
-For major changes, we recommend discussing with us first via an Issue.
-
----
-
-## License
-
-This project is licensed under the [MIT](LICENSE) License.
-
----
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/issues)
-- **Changelog**: [CHANGELOG.md](CHANGELOG.md)
+Current: `v0.8.20-fix6` (based on official `v0.8.20`, forked 2026-05-10)

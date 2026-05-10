@@ -12,7 +12,9 @@
 
 如需了解插件的完整功能介绍、安装方式和配置说明，请参阅 [官方 README](README_DINGTALK_OFFICIAL.md)。
 
-BUG采用Claude Code官方模型修复，保证最大修复效果，欢迎民间大神提pr，共建钉钉连接器生态。
+BUG采用Claude Code官方模型修复，保证最大修复效果。
+
+有民间大神有增强功能或者BUG修复的。随时欢迎提pr，我会积极采纳测试合并。
 
 ---
 
