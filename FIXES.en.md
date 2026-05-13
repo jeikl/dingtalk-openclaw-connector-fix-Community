@@ -5,6 +5,31 @@ This file documents all bug fixes in the community maintained version relative t
 
 ---
 
+## v0.8.20-fix4（2026-05-14）
+
+### ✨ Markdown Image Support for Direct URLs and Local Paths, No Download Required
+
+**Source**
+
+From [PR #561](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/561)（[新之助](https://github.com/spike-zwj)）。
+
+**Features**
+
+- Markdown syntax `![caption](direct-url)` or `![caption](local-path)` sends images directly
+- Compatible with mediaId format
+- Direct URLs and local paths can be embedded in markdown without downloading
+- If local path contains spaces, rename to remove spaces before sending
+
+**Usage**
+
+Requires prompt to guide Agent in creating an image sending skill:
+
+```
+Please write a DingTalk image sending skill following this approach: use markdown to send images, with image captions for rich text; direct URLs or local paths can be embedded directly in markdown, and if local paths contain spaces, rename to remove spaces first before sending.
+```
+
+---
+
 ## v0.8.20-fix3（2026-05-11）
 
 Based on `v0.8.20-fix2`.

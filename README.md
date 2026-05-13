@@ -19,26 +19,33 @@
 
 ---
 
-## 🔧 最近修复
+## 🔧 最近更新
 
-> 所有修复均使用 Claude Code（官方 AI 模型）生成，保证最大修复效果。
-
-| 日期 | 标识 | 修复内容 |
+| 日期 | 标识 | 更新内容 |
 |------|------|---------|
+| 2026-05-14 | ✨ | Markdown 图片发送支持直链和本地路径，无需下载到本地，请参考下列提示词|
 | 2026-05-11 | 🔧 | Agent 多轮循环完成后，中间过程消息重复发送到钉钉对话，造成刷屏和 AI Card 倒放重渲染 |
 | 2026-05-11 | 🐛 | OpenClaw 4.29+ 版本导致钉钉插件失效，群聊 @Agent 回复显示"✅ 任务执行完成（无文本输出）" |
 | 2026-05-08 | 🌐 | 未注册的 Pong 监听器导致的 WebSocket 幻影重连，来源于 [PR #566](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/566)（[Majorshi](https://github.com/Majorshi) 提交） |
 
-完整修复日志：[FIXES.md](FIXES.md)（[🇺🇸 English](FIXES.en.md)）
+完整更新日志：[FIXES.md](FIXES.md)（[🇺🇸 English](FIXES.en.md)）
 
 ---
 
 ## ✨ 增强功能
 
-- 🔧 钉钉在私聊和群聊发送图文并茂的内容指令：
-请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能。如果是直链图片，需要下载到你当前的工作区的output文件夹下，如果是本地文件，那么就复制到你当前的工作区的output文件夹下，然后用markdown语法发送本地路径图片，带上文字描述。
+- 🔧 Markdown 图片发送支持直链和本地路径，无需下载到本地：
+  - Markdown 语法 `![图片注释](直链URL)` 或 `![图片注释](本地路径)` 直接发送图片
+  - 兼容 mediaId 格式
+  - ⚠️ 本插件支持图文发送，但钉钉侧不会主动触发此功能，需使用以下提示词引导 Agent：
 
-- 🎨 支持自定义 AI Card 模板，可使用本人预制的卡片（含内容复制按钮），不填则使用官方默认卡片：
+    ```
+    请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能：用markdown语法发送图片，支持添加图片注释实现图文并茂；直链图片或本地路径文件均可直接嵌入markdown发送，如本地路径含空格请先重命名去除空格再发送。
+    ```
+
+- 🎨 支持自定义 AI Card 模板，可使用本人预制的卡片（含内容复制按钮），不填则使用官方默认卡片。
+
+**单机器人：**
 
 ```json
 "channels": {
@@ -47,21 +54,57 @@
     "clientId": "你的clientId",
     "clientSecret": "你的clientSecret",
     "cardTemplateId": "你的卡片模板ID.schema",
-    "cardContentVar": "content",
-    "cardProcessVar": "progress",
-    "cardToolVar": "tool_output"
+    "cardContentVar": "content"
+  }
+}
+```
+
+**多机器人（多 Agent）：** 每个账号可绑定不同机器人
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "accounts": {
+      "main-bot": {
+        "enabled": true,
+        "name": "工作流机器人",
+        "clientId": "你的clientId",
+        "clientSecret": "你的clientSecret",
+        "cardTemplateId": "07a7b2db-291c-4893-a7ab-d5cd266d0a32.schema",
+        "cardContentVar": "content"
+      },
+      "another-bot": {
+        "enabled": true,
+        "name": "另一个机器人",
+        "clientId": "另一个clientId",
+        "clientSecret": "另一个clientSecret",
+        "cardTemplateId": "07a7b2db-291c-4893-a7ab-d5cd266d0a32.schema",
+        "cardContentVar": "content"
+      }
+    }
   }
 }
 ```
 
 | 参数 | 说明 |
 |------|------|
+| `clientId` / `clientSecret` | 单机器人模式直接填在顶层 |
+| `accounts` | 多机器人模式，key 为账号标识名（可任意命名） |
+| `accounts.*.enabled` | 是否启用该账号 |
+| `accounts.*.name` | 账号显示名称（仅用于标识） |
+| `accounts.*.clientId` | 钉钉应用 ClientId |
+| `accounts.*.clientSecret` | 钉钉应用 ClientSecret |
 | `cardTemplateId` | AI Card 模板 ID，不填则使用官方默认模板 |
 | `cardContentVar` | 最终回复内容变量名，不填默认 `msgContent` |
 | `cardProcessVar` | 中间过程（block 状态）变量名，不填默认使用 `cardContentVar` |
 | `cardToolVar` | 工具调用输出变量名，不填则不写入卡片 |
 
 > 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建，并添加对应的变量字段。
+
+**效果预览：**
+
+![自定义卡片效果](assets/image.png)
 
 ---
 

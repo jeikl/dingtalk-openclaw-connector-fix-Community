@@ -19,24 +19,29 @@
 
 ---
 
-## 🔧 Recent Fixes
+## 🔧 Recent Updates
 
-> All fixes generated using Claude Code (official AI model) for maximum fix quality.
-
-| Date | Tag | Description |
-|------|-----|-------------|
+| Date | Tag | Update |
+|------|------|--------|
+| 2026-05-14 | ✨ | Markdown image support for direct URLs and local paths, no download required |
 | 2026-05-11 | 🔧 | AI Card flashing and repeated re-rendering caused by duplicate intermediate messages after Agent multi-round loop completes |
 | 2026-05-11 | 🐛 | OpenClaw 4.29+ causing DingTalk plugin to show "✅ 任务执行完成（无文本输出）" in group chat @Agent |
 | 2026-05-08 | 🌐 | WebSocket phantom reconnect caused by unregistered Pong listener, from [PR #566](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/566) by [Majorshi](https://github.com/Majorshi) |
 
-Full fix log: [FIXES.md](FIXES.md)（[🇨🇳 中文](FIXES.en.md)）
+Full update log: [FIXES.md](FIXES.md)（[🇨🇳 中文](FIXES.en.md)）
 
 ---
 
 ## ✨ Enhanced Features
 
-- 🔧 Rich text + image messages in DingTalk private chat and group chat:
-请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能。如果是直链图片，需要下载到你当前的工作区的output文件夹下，如果是本地文件，那么就复制到你当前的工作区的output文件夹下，然后用markdown语法发送本地路径图片，带上文字描述。
+- 🔧 Markdown image support for direct URLs and local paths, no download required:
+  - Markdown syntax `![](direct-url)` or `![](local-path)` sends images directly
+  - Compatible with mediaId format
+  - ⚠️ This plugin supports image messages, but DingTalk side won't trigger this feature automatically. Use the following prompt to guide the Agent:
+
+    ```
+    Please write a DingTalk image sending skill following this approach: use markdown to send images, with image captions for rich text; direct URLs or local paths can be embedded directly in markdown, and if local paths contain spaces, rename to remove spaces first before sending.
+    ```
 
 - 🎨 Custom AI Card template support for user-prebuilt cards (with copy button), uses official default card if not set:
 
@@ -47,9 +52,7 @@ Full fix log: [FIXES.md](FIXES.md)（[🇨🇳 中文](FIXES.en.md)）
     "clientId": "your-clientId",
     "clientSecret": "your-clientSecret",
     "cardTemplateId": "your-card-template-id.schema",
-    "cardContentVar": "content",
-    "cardProcessVar": "progress",
-    "cardToolVar": "tool_output"
+    "cardContentVar": "content"
   }
 }
 ```
