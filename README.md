@@ -19,24 +19,29 @@
 
 ---
 
-## 🔧 最近修复
+## 🔧 最近更新
 
-> 所有修复均使用 Claude Code（官方 AI 模型）生成，保证最大修复效果。
-
-| 日期 | 标识 | 修复内容 |
+| 日期 | 标识 | 更新内容 |
 |------|------|---------|
+| 2026-05-14 | ✨ | Markdown 图片发送支持直链和本地路径，无需下载到本地，请参考下列提示词|
 | 2026-05-11 | 🔧 | Agent 多轮循环完成后，中间过程消息重复发送到钉钉对话，造成刷屏和 AI Card 倒放重渲染 |
 | 2026-05-11 | 🐛 | OpenClaw 4.29+ 版本导致钉钉插件失效，群聊 @Agent 回复显示"✅ 任务执行完成（无文本输出）" |
 | 2026-05-08 | 🌐 | 未注册的 Pong 监听器导致的 WebSocket 幻影重连，来源于 [PR #566](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/566)（[Majorshi](https://github.com/Majorshi) 提交） |
 
-完整修复日志：[FIXES.md](FIXES.md)（[🇺🇸 English](FIXES.en.md)）
+完整更新日志：[FIXES.md](FIXES.md)（[🇺🇸 English](FIXES.en.md)）
 
 ---
 
 ## ✨ 增强功能
 
-- 🔧 钉钉在私聊和群聊发送图文并茂的内容指令：
-请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能。如果是直链图片，需要下载到你当前的工作区的output文件夹下，如果是本地文件，那么就复制到你当前的工作区的output文件夹下，然后用markdown语法发送本地路径图片，带上文字描述。
+- 🔧 Markdown 图片发送支持直链和本地路径，无需下载到本地：
+  - Markdown 语法 `![图片注释](直链URL)` 或 `![图片注释](本地路径)` 直接发送图片
+  - 兼容 mediaId 格式
+  - ⚠️ 本插件支持图文发送，但钉钉侧不会主动触发此功能，需使用以下提示词引导 Agent：
+
+    ```
+    请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能：用markdown语法发送图片，支持添加图片注释实现图文并茂；直链图片或本地路径文件均可直接嵌入markdown发送，如本地路径含空格请先重命名去除空格再发送。
+    ```
 
 - 🎨 支持自定义 AI Card 模板，可使用本人预制的卡片（含内容复制按钮），不填则使用官方默认卡片：
 
@@ -46,7 +51,7 @@
     "enabled": true,
     "clientId": "你的clientId",
     "clientSecret": "你的clientSecret",
-    "cardTemplateId": "07a7b2db-291c-4893-a7ab-d5cd266d0a32.schema",
+    "cardTemplateId": "你的卡片模板ID.schema",
     "cardContentVar": "content"
   }
 }
@@ -57,7 +62,7 @@
 | `cardTemplateId` | AI Card 模板 ID，不填则使用官方默认模板 |
 | `cardContentVar` | 卡片内容变量名（对应模板中的字段），不填默认 `msgContent` |
 
-> 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建，并添加与 `cardContentVar` 同名的变量字段。
+> 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建，并添加对应的变量字段。
 
 ---
 
