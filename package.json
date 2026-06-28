@@ -1,7 +1,7 @@
 {
-  "name": "@dingtalk-real-ai/dingtalk-connector",
-  "version": "0.8.20-fix7",
-  "description": "Official OpenClaw DingTalk channel plugin | 钉钉官方 OpenClaw 插件",
+  "name": "@jeik/dingtalk-connector",
+  "version": "0.8.20",
+  "description": "OpenClaw DingTalk channel plugin (fork) | 钉钉 OpenClaw 渠道插件（fork 自官方，含标记/卡片渲染修复）",
   "type": "module",
   "exports": {
     ".": {
@@ -77,14 +77,14 @@
     "connector",
     "deap-agent"
   ],
-  "author": "DingTalk Real Team",
+  "author": "jeik",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector.git"
+    "url": "git+https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git"
   },
-  "homepage": "https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector#readme",
-  "bugs": "https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/issues",
+  "homepage": "https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community#readme",
+  "bugs": "https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community/issues",
   "publishConfig": {
     "access": "public"
   },
@@ -128,7 +128,7 @@
       "quickstartAllowFrom": true
     },
     "install": {
-      "npmSpec": "@dingtalk-real-ai/dingtalk-connector",
+      "npmSpec": "@jeik/dingtalk-connector",
       "localPath": "extensions/dingtalk",
       "defaultChoice": "npm"
     },

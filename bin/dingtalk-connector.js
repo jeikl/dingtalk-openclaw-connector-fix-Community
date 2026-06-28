@@ -25,7 +25,7 @@ const _fetch = globalThis['fet' + 'ch'];
 const BASE_URL = (_env.DINGTALK_REGISTRATION_BASE_URL || '').trim() || 'https://oapi.dingtalk.com';
 const SOURCE = (_env.DINGTALK_REGISTRATION_SOURCE || '').trim() || 'DING_DWS_CLAW';
 const CHANNEL_ID = 'dingtalk-connector';
-const PKG_NAME = '@dingtalk-real-ai/dingtalk-connector';
+const PKG_NAME = '@jeik/dingtalk-connector';
 
 async function post(url, body) {
   const res = await _fetch(url, {
