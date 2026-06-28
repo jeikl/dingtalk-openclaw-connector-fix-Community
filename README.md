@@ -23,6 +23,8 @@
 
 | 日期 | 标识 | 更新内容 |
 |------|------|---------|
+| 2026-06-28 | 📦 | 改为发布到 npm（`@jeik/dingtalk-connector`），新增一键扫码安装命令；`--force` 覆盖更新无需卸载 |
+| 2026-06-28 | 🐛 | 回复标记改为位置无关：修复 AI 把标记打在开头时钉钉显示"✅ 任务执行完成（无文本输出）"、webchat 残留标记、流式卡片漏半截标记 |
 | 2026-05-14 | ✨ | Markdown 图片发送支持直链和本地路径，无需下载到本地，请参考下列提示词|
 | 2026-05-11 | 🔧 | Agent 多轮循环完成后，中间过程消息重复发送到钉钉对话，造成刷屏和 AI Card 倒放重渲染 |
 | 2026-05-11 | 🐛 | OpenClaw 4.29+ 版本导致钉钉插件失效，群聊 @Agent 回复显示"✅ 任务执行完成（无文本输出）" |
@@ -139,43 +141,43 @@
 
 ---
 
-## 卸载官方插件（避免冲突）
+## 安装
 
-安装本版本前，先移除官方已安装的插件：
+> 与官方插件同 channel id（`dingtalk-connector`），`--force` 直接覆盖更新，**无需先卸载**官方版或旧版。
+
+### 方式一：npm（推荐）
+
+本版本已发布到 npm（`@jeik/dingtalk-connector`）。
+
+**一键扫码安装**（推荐，钉钉扫码完成：机器人创建 → 凭证获取 → 插件安装 → 配置写入）：
 
 ```bash
-
-
-# 卸载官方版本
-openclaw plugins uninstall dingtalk-connector
-
+npx -y @jeik/dingtalk-connector install
 ```
 
----
+**或仅安装插件**（自行配置凭证，见下方进阶文档）：
 
-## 手动构建与部署、或者直接下载release构建产物直接进行安装
+```bash
+openclaw plugins install @jeik/dingtalk-connector --force
+# 或
+npx openclaw@latest add @jeik/dingtalk-connector
 
-本版本需要手动编译安装（社区修复版，不在 npm 发布）：
+openclaw gateway restart
+```
+
+### 方式二：本地构建产物（开发 / 离线）
 
 ```bash
 # 1. 克隆仓库
 git clone https://ghfast.top/https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 
-# 2. 安装依赖 & 构建 & 打包
+# 2. 安装依赖 & 构建 & 打包（npm 或 pnpm 任选）
+npm install && npm run build && npm pack       # → jeik-dingtalk-connector-0.8.21.tgz
+# pnpm install && pnpm run build && pnpm pack
 
-# npm
-npm install
-npm run build
-npm pack
-
-# 或者 pnpm
-pnpm install
-pnpm run build
-pnpm pack
-
-# 3. 安装到 OpenClaw 并重启（release或当前目录构建产物）
-openclaw plugins install ./jeik-dingtalk-connector-0.8.20.tgz
+# 3. 安装到 OpenClaw 并重启
+openclaw plugins install ./jeik-dingtalk-connector-0.8.21.tgz --force
 openclaw gateway restart
 ```
 
