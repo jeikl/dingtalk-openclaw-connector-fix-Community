@@ -129,6 +129,36 @@ async function deviceAuthFlow() {
   throw new Error('authorization timeout');
 }
 
+// ── manual credential entry ────────────────────────────────────
+// 已有钉钉应用凭证时，跳过扫码，交互式手动填入 clientId / clientSecret。
+async function manualCredentialEntry() {
+  console.log('\n' + cyan('✍ 手动填入机器人凭证 (manual credential entry)'));
+  console.log(dim('  在钉钉开发者后台「应用 → 凭证与基础信息」可查到 ClientID(AppKey) 与 ClientSecret(AppSecret)。') + '\n');
+  let clientId = '';
+  while (!clientId) {
+    clientId = (await askUserInput('  ClientId (AppKey/SuiteKey): ')).trim();
+    if (!clientId) console.log(red('  ⚠ clientId 不能为空'));
+  }
+  let clientSecret = '';
+  while (!clientSecret) {
+    clientSecret = (await askUserInput('  ClientSecret (AppSecret): ')).trim();
+    if (!clientSecret) console.log(red('  ⚠ clientSecret 不能为空'));
+  }
+  return { clientId, clientSecret };
+}
+
+// 取机器人凭证：--manual 直接手动填入；否则交互式让用户选「扫码 / 手动」。
+async function obtainCredentials({ manual = false } = {}) {
+  if (manual) return await manualCredentialEntry();
+  const choice = (await askUserInput(
+    '\n如何配置机器人凭证？(how to provide credentials)\n' +
+      '  [1] 钉钉扫码，自动获取 (QR scan)\n' +
+      '  [2] 手动填入已有的 clientId / clientSecret (manual)\n' +
+      '选择 [1/2，默认1] ',
+  )).trim();
+  return choice === '2' ? await manualCredentialEntry() : await deviceAuthFlow();
+}
+
 // ── config helpers ─────────────────────────────────────────────
 function getConfigPath() {
   return join(homedir(), '.openclaw', 'openclaw.json');
@@ -654,6 +684,7 @@ async function main() {
   const command = argv[0];
   const isLocal = argv.includes('--local') || argv.includes('-l');
   const skipDws = argv.includes('--skip-dws');
+  const manual = argv.includes('--manual') || argv.includes('-m');
 
   if (!command || command === '--help' || command === '-h') {
     console.log(`
@@ -661,10 +692,12 @@ DingTalk Connector CLI
 
 Usage:
   npx -y ${PKG_NAME} install              Install plugin + dws CLI + QR auth
+  npx -y ${PKG_NAME} install --manual     Enter clientId/clientSecret manually (skip QR)
   npx -y ${PKG_NAME} install --local      QR auth only (skip plugin install)
   npx -y ${PKG_NAME} install --skip-dws   Skip dws CLI installation
 
 Options:
+  --manual, -m     Enter existing clientId/clientSecret manually instead of QR scan
   --local, -l      Skip plugin install (for local development)
   --skip-dws       Skip dws CLI auto-installation
   --help, -h       Show this help
@@ -735,9 +768,9 @@ Options:
     }
   }
 
-  // Step 4: QR authorization
+  // Step 4: 取凭证 —— 扫码 或 手动填入（--manual / 交互选择）
   try {
-    const creds = await deviceAuthFlow();
+    const creds = await obtainCredentials({ manual });
     console.log('\n' + dim('Saving local configuration... (正在进行本地配置...)') + '\n');
 
     // Inject DWS environment variables for dws CLI integration
