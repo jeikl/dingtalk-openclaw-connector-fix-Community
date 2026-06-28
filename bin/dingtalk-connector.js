@@ -404,7 +404,9 @@ function getDwsSpawnEnv() {
 
 // ── dws CLI install ─────────────────────────────────────────────
 const DWS_INSTALL_SCRIPT_URL = 'https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-workspace-cli/main/scripts/install.sh';
-const DWS_NPM_PACKAGE = 'dingtalk-workspace-cli@1.0.13';
+// @latest：装/升 dws 始终用最新版。getTargetDwsVersion() 解析不到固定版本号（返回 null），
+// ensureDwsCli 会走「始终拉最新」分支（不做语义版本升降比较，因为 latest 永远不会降级）。
+const DWS_NPM_PACKAGE = 'dingtalk-workspace-cli@latest';
 
 function isDwsInstalled() {
   const mod = ['child', 'process'].join('_');
@@ -559,7 +561,28 @@ async function ensureDwsCli() {
   if (isDwsInstalled()) {
     const installedVersion = getInstalledDwsVersion();
     const versionDisplay = installedVersion ? `v${installedVersion}` : 'unknown version';
-    const comparison = (installedVersion && targetVersion) ? compareVersions(targetVersion, installedVersion) : 0;
+
+    if (!targetVersion) {
+      // @latest 模式：解析不到固定版本号 → 始终重装拉最新（latest 不会降级，无需比较/询问）
+      console.log(dim(`  ℹ dws CLI detected (${versionDisplay}), ensuring latest (@latest)...`) + '\n');
+      const ok = installDwsCli();
+      if (ok) {
+        const nv = getInstalledDwsVersion();
+        console.log(green(`  ✔ dws CLI is now ${nv ? 'v' + nv : 'latest'}`) + '\n');
+      } else {
+        console.log(red('  ⚠ Update failed. Continuing with current version.') + '\n');
+      }
+      // 鉴权状态检查（与下方同逻辑）
+      if (isDwsAuthenticated()) {
+        console.log(dim('  ✔ dws CLI authenticated') + '\n');
+      } else {
+        console.log(dim('  ℹ dws CLI not yet authenticated. Authorization will be triggered when Agent uses dws features.') + '\n');
+        console.log(dim('    You can also authorize manually anytime: ') + cyan('dws auth login') + '\n');
+      }
+      return;
+    }
+
+    const comparison = installedVersion ? compareVersions(targetVersion, installedVersion) : 0;
 
     if (comparison > 0) {
       // Scenario 1: target > local → upgrade directly

@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **AI Card premature finalization fix** — Fixed the connector mistaking an intermediate progress message for the final answer and finalizing the AI Card too early when the model emits multiple progress messages in one turn. The card is now finalized only when the whole turn completes (`onIdle`); intermediate messages merely refresh the card content without closing it, so the final answer always renders stably instead of getting stuck mid-way.
 
 ### 其他 / Misc
+- 🔧 **dws CLI 改用 `@latest`** — 安装向导安装/升级 DingTalk Workspace CLI 时由固定 `@1.0.13` 改为 `@latest`，存量已安装也会拉到最新（latest 不会降级，故跳过版本比较与降级询问）。  
+  **dws CLI now uses `@latest`** — The install wizard installs/upgrades the DingTalk Workspace CLI via `@latest` instead of a pinned `@1.0.13`; existing installs are bumped to latest (no downgrade comparison/prompt since latest never downgrades).
 - 📦 **社区版改为 npm 发布** — 包名 `@dingtalk-real-ai/dingtalk-connector` → `@jeik/dingtalk-connector`（同 channel id `dingtalk-connector`，配置不变）；新增 `npx -y @jeik/dingtalk-connector install` 一键扫码安装；README 安装方式重排为「npm 优先 + 本地构建」，移除卸载步骤（`--force` 即覆盖更新）。  
   **Community build now published to npm** — Package renamed `@dingtalk-real-ai/dingtalk-connector` → `@jeik/dingtalk-connector` (same channel id, config unchanged); added one-command scan-to-install `npx -y @jeik/dingtalk-connector install`; README install section reordered (npm first + local build), uninstall step removed (`--force` overwrites).
 
