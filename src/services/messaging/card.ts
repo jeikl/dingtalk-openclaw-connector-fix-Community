@@ -370,6 +370,18 @@ export async function streamAICard(
   /** 覆盖默认变量名，优先级：contentVar > config.cardProcessVar > config.cardContentVar */
   contentVar?: string,
 ): Promise<void> {
+  // marker 剥离：所有卡片写入都经过这里，是钉钉侧的单一 chokepoint。
+  // 带标记 → 提取最终答案 + 剥离；不带 → 原样。
+  const hadMarker = content.includes("[-process-]") || content.includes("[-final-]");
+  let finalContent = content;
+  if (hadMarker) {
+    const i = content.lastIndexOf("[-final-]");
+    finalContent = i >= 0 ? content.slice(i + "[-final-]".length) : content;
+    finalContent = finalContent.split("[-process-]").join("").split("[-final-]").join("").replace(/^[ \t\r\n]+/, "");
+    log?.info?.(`[DingTalk][marker] ${finished ? "finishAICard" : "streamAICard"} 检测到标记，已剥离（${content.length}→${finalContent.length} 字）`);
+  }
+  content = finalContent;
+
   const varName = contentVar
     || (config?.cardProcessVar as string)
     || (config?.cardContentVar as string)

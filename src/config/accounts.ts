@@ -28,7 +28,7 @@ export function listDingtalkAccountIds(cfg: ClawdbotConfig): string[] {
     // Backward compatibility: no accounts configured, use default
     return [DEFAULT_ACCOUNT_ID];
   }
-  return [...ids].toSorted((a, b) => a.localeCompare(b));
+  return [...ids].sort((a, b) => a.localeCompare(b));
 }
 
 /**

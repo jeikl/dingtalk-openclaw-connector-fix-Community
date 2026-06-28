@@ -234,7 +234,7 @@ export async function monitorSingleAccount(
 
     try {
       // 1. 先断开旧连接（检查 WebSocket 状态）
-      if (client.socket?.readyState === 1 || client.socket?.readyState === 3) {
+      if ((client as any).socket?.readyState === 1 || (client as any).socket?.readyState === 3) {
         await client.disconnect();
         logger.info(`已断开旧连接`);
       }
@@ -249,7 +249,7 @@ export async function monitorSingleAccount(
         }, 10_000); // 10 秒超时
 
         // 如果已经是 OPEN 状态，直接返回
-        if (client.socket?.readyState === 1) {
+        if ((client as any).socket?.readyState === 1) {
           clearTimeout(timeout);
           resolve(true);
           return;
@@ -258,21 +258,21 @@ export async function monitorSingleAccount(
         // 否则监听 open 事件
         const onOpen = () => {
           clearTimeout(timeout);
-          client.socket?.removeListener('open', onOpen);
-          client.socket?.removeListener('error', onError);
+          (client as any).socket?.removeListener('open', onOpen);
+          (client as any).socket?.removeListener('error', onError);
           resolve(true);
         };
 
         const onError = (err: any) => {
           clearTimeout(timeout);
-          client.socket?.removeListener('open', onOpen);
-          client.socket?.removeListener('error', onError);
+          (client as any).socket?.removeListener('open', onOpen);
+          (client as any).socket?.removeListener('error', onError);
           logger.warn(`连接建立失败: ${err.message}`);
           resolve(false);
         };
 
-        client.socket?.once('open', onOpen);
-        client.socket?.once('error', onError);
+        (client as any).socket?.once('open', onOpen);
+        (client as any).socket?.once('error', onError);
       });
 
       if (!connectionEstablished) {
@@ -292,7 +292,7 @@ export async function monitorSingleAccount(
       setupMessageListener();
       setupCloseListener();
 
-      logger.info(`✅ 重连成功 (socket 状态=${client.socket?.readyState})`);
+      logger.info(`✅ 重连成功 (socket 状态=${(client as any).socket?.readyState})`);
     } catch (err: any) {
       reconnectAttempts++;
       logger.error(
@@ -306,7 +306,7 @@ export async function monitorSingleAccount(
 
   /** 监听 pong 响应（更新 socket 可用时间） */
   function setupPongListener() {
-    client.socket?.on("pong", () => {
+    (client as any).socket?.on("pong", () => {
       lastSocketAvailableTime = Date.now();
       logger.debug(`收到 PONG 响应`);
     });
@@ -314,7 +314,7 @@ export async function monitorSingleAccount(
 
   /** 监听 WebSocket message 事件，收到 disconnect 消息时立即触发重连 */
   function setupMessageListener() {
-    client.socket?.on("message", (data: any) => {
+    (client as any).socket?.on("message", (data: any) => {
       try {
         const msg = JSON.parse(data);
         if (msg.type === "SYSTEM" && msg.headers?.topic === "disconnect") {
@@ -333,7 +333,7 @@ export async function monitorSingleAccount(
 
   /** 监听 WebSocket close 事件，服务端主动断开时立即触发重连 */
   function setupCloseListener() {
-    client.socket?.on("close", (code, reason) => {
+    (client as any).socket?.on("close", (code, reason) => {
       logger.info(
         `WebSocket close: code=${code}, reason=${reason || "未知"}, isStopped=${isStopped}`,
       );
@@ -386,7 +386,7 @@ export async function monitorSingleAccount(
         }
 
         // 【心跳检测】检查 socket 状态
-        const socketState = client.socket?.readyState;
+        const socketState = (client as any).socket?.readyState;
         const timeSinceConnection = Date.now() - connectionEstablishedTime;
         logger.debug(
           `心跳检测：socket 状态=${socketState}, elapsed=${Math.round(elapsed / 1000)}s, 连接已建立=${Math.round(timeSinceConnection / 1000)}s`,
@@ -411,7 +411,7 @@ export async function monitorSingleAccount(
         // 【发送原生 Ping】仅发送，不刷新时间戳；
         // 只有收到 pong 响应时才更新 lastSocketAvailableTime（见 setupPongListener）
         try {
-          client.socket?.ping();
+          (client as any).socket?.ping();
           logger.debug(`💓 发送 PING 心跳成功`);
         } catch (err: any) {
           logger.warn(`发送 PING 失败：${err.message}`);
@@ -447,8 +447,8 @@ export async function monitorSingleAccount(
     }
 
     // 清理事件监听器
-    if (client.socket) {
-      client.socket.removeAllListeners();
+    if ((client as any).socket) {
+      (client as any).socket.removeAllListeners();
     }
 
     logger.debug(`Connection 已停止`);
@@ -462,7 +462,7 @@ export async function monitorSingleAccount(
         stop();
         try {
           // 只在连接已建立时才断开
-          if (client.socket && client.socket.readyState === 1) {
+          if ((client as any).socket && (client as any).socket.readyState === 1) {
             await client.disconnect();
           }
         } catch (err: any) {
@@ -508,7 +508,7 @@ export async function monitorSingleAccount(
 
       // 立即确认回调
       if (messageId) {
-        client.socketCallBackResponse(messageId, { success: true });
+        (client as any).socketCallBackResponse(messageId, { success: true });
         logger.info(`✅ 已立即确认回调：messageId=${messageId}`);
       } else {
         logger.warn(`⚠️ 警告：消息没有 messageId`);
@@ -639,7 +639,7 @@ export async function monitorSingleAccount(
     try {
       await client.connect();
 
-      // 注册 socket 事件监听器（必须在 connect 后，此时 client.socket 已创建）
+      // 注册 socket 事件监听器（必须在 connect 后，此时 (client as any).socket 已创建）
       setupPongListener();
       setupMessageListener();
       setupCloseListener();

@@ -9,6 +9,8 @@ build/
 node_modules/
 package-lock.json
 coverage/
+*.tgz
+logs/
 
 # IDE
 .idea/

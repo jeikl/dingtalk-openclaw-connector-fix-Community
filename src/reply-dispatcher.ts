@@ -49,6 +49,8 @@ import {
   processAudioMarkers,
   uploadAndReplaceFileMarkers,
 } from "./services/media/index.ts";
+import { getGlobalHookRunner } from "openclaw/plugin-sdk/plugin-runtime";
+import { PROCESS_TAG, FINAL_TAG, extractFinal, finalClean, displayClean } from "./services/reply-markers.ts";
 
 
 export type CreateDingtalkReplyDispatcherParams = {
@@ -103,6 +105,55 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
 
   // 工具输出累积（用于写入卡片的 cardToolVar）
   let accumulatedToolOutput = "";
+
+  // ===== 回复标记 / 最终答案认定 =====
+  // finalMarkedText：见到 [-final-] 后捕获其后内容（marker 模式的权威最终答案）。
+  // lastAnswerText：最近一段非 reasoning 的正式答案（无标记兜底，靠 openclaw 的 isReasoning 标签）。
+  let finalMarkedText: string | null = null;
+  let lastAnswerText = "";
+  // 仅用于日志去重：每轮回复对"检测到过程/最终标记"各只打一次。
+  let processMarkerLogged = false;
+  let finalMarkerLogged = false;
+
+  // 观察每段到达的文本，更新两个认定源，并在首次检测到标记时打日志（用户无感，仅日志可见）。
+  const observeReply = (raw: string | undefined, isReasoning: boolean | undefined) => {
+    const text = raw ?? "";
+    if (!text) return;
+    if (!processMarkerLogged && text.includes(PROCESS_TAG)) {
+      processMarkerLogged = true;
+      log.info(`[DingTalk][marker] 检测到过程标记 ${PROCESS_TAG}（已剥离，不展示给用户）`);
+    }
+    const fin = extractFinal(text);
+    if (fin !== null) {
+      if (!finalMarkerLogged) {
+        finalMarkerLogged = true;
+        log.info(`[DingTalk][marker] 检测到最终标记 ${FINAL_TAG}（已剥离，以其后内容为最终答案）`);
+      }
+      finalMarkedText = fin;                                 // 取最后一个 [-final-] 之后内容
+    }
+    if (!isReasoning && text.trim()) lastAnswerText = text;  // 非思考过程 = 正式答案
+  };
+
+  // 选定本轮最终答案：优先 marker，其次最近的非 reasoning 答案，最后退回 accumulatedText。
+  const pickFinalText = (): string => finalMarkedText ?? (lastAnswerText || accumulatedText);
+
+  // 对最终答案套用 prompt-rewriter 的固定模板（跑 reply_payload_sending 钩子）。失败不阻断投递。
+  const applyReplyTemplate = async (text: string): Promise<string> => {
+    try {
+      const runner = getGlobalHookRunner?.();
+      if (!runner?.hasHooks?.("reply_payload_sending")) return text;
+      const res = await runner.runReplyPayloadSending(
+        { payload: { text }, kind: "final", channel: CHANNEL_ID } as any,
+        { channelId: CHANNEL_ID, accountId, conversationId, senderId } as any,
+      );
+      if (res?.cancel) return text;
+      const out = res?.payload?.text;
+      return typeof out === "string" && out ? out : text;
+    } catch (e: any) {
+      log.warn(`[DingTalk] 套用回复模板失败（忽略）：${e?.message || String(e)}`);
+      return text;
+    }
+  };
 
   // ===== 养成系统: 通过 onCommandOutput 监听 dws 命令执行 =====
   // 记录当前回复周期内 onCommandOutput 回调检测到的 dws 产品名（如 "aitable"、"calendar"），
@@ -317,9 +368,12 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
     log.info(`[DingTalk][closeStreaming] 开始关闭 AI Card...`);
 
     try {
-      // 处理媒体标记
-      let finalText = accumulatedText;
-      
+      // 选定最终答案：marker 优先 → 最近非 reasoning 答案 → accumulatedText 兜底，并剥离尾标记
+      let finalText = finalClean(pickFinalText());
+      log.info(
+        `[DingTalk][closeStreaming] 最终答案来源=${finalMarkedText !== null ? "marker[-final-]" : (lastAnswerText ? "非reasoning答案" : "accumulatedText兜底")}，长度=${finalText.length}`
+      );
+
       // ✅ 如果累积的文本为空，使用默认提示文案
       if (!finalText.trim()) {
         finalText = '✅ 任务执行完成（无文本输出）';
@@ -421,6 +475,9 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         log.warn(`[DingTalk][closeStreaming] 养成系统处理失败（不影响主流程）: ${gamErr?.message || gamErr}`);
       }
 
+      // 套用 prompt-rewriter 的固定回复模板（只对最终答案）
+      finalText = await applyReplyTemplate(finalText);
+
       log.info(`[DingTalk][closeStreaming] 准备调用 finishAICard，文本长度=${finalText.length}`);
       log.debug(`[DingTalk][closeStreaming] 最终发送内容长度=${finalText.length}`);
       await finishAICard(
@@ -435,14 +492,15 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
       // ✅ 媒体处理或关闭失败时，降级发送普通消息
       await sendFallbackErrorMessage('mediaProcess', error?.message || String(error));
       
-      // 尝试用普通消息发送累积的文本
-      if (accumulatedText.trim()) {
+      // 尝试用普通消息发送累积的文本（剥离尾标记防泄漏）
+      const fallbackText = finalClean(finalMarkedText ?? accumulatedText);
+      if (fallbackText.trim()) {
         try {
           log.info(`[DingTalk][closeStreaming] 降级发送普通消息`);
           await sendMessage(
             account.config as DingtalkConfig,
             sessionWebhook,
-            accumulatedText,
+            fallbackText,
             {
               useMarkdown: true,
               log: params.runtime.log,
@@ -465,8 +523,12 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
       humanDelay: core.channel.reply.resolveHumanDelayConfig(cfg, agentId),
       onReplyStart: () => {
         log.info(`[DingTalk][onReplyStart] 开始回复，流式 enabled=${streamingEnabled}`);
-        // 每次 onReplyStart 都是全新的回复周期，清空去重集合
+        // 每次 onReplyStart 都是全新的回复周期，清空去重集合 + 标记认定状态
         deliveredFinalTexts.clear();
+        finalMarkedText = null;
+        lastAnswerText = "";
+        processMarkerLogged = false;
+        finalMarkerLogged = false;
         if (streamingEnabled) {
           // fire-and-forget：提前创建 AI Card，onPartialReply 会等待创建完成
           void startStreaming();
@@ -478,6 +540,9 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         
         log.info(`[DingTalk][deliver] 被调用：kind=${info?.kind}, textLength=${text.length}, hasText=${Boolean(text.trim())}`);
         log.debug(`[DingTalk][deliver] payload keys=${Object.keys(payload).join(',')}, info.kind=${info?.kind}`);
+
+        // 观察标记：更新最终答案认定（marker / 非 reasoning 兜底）
+        observeReply(payload.text, (payload as any).isReasoning);
         
         // ✅ 在 final 响应时，先处理裸露的文件路径
         if (info?.kind === "final" && text.trim()) {
@@ -521,10 +586,10 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           return;
         }
 
-        // 异步模式：只累积响应，不发送
+        // 异步模式：只累积响应，不发送（剥离标记防泄漏；固定模板由消费方按需套）
         if (asyncMode) {
           log.info(`[DingTalk][deliver] 异步模式，累积响应`);
-          asyncModeFullResponse = text;
+          asyncModeFullResponse = finalClean(finalMarkedText ?? text);
           return;
         }
 
@@ -556,7 +621,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
               try {
                 await streamAICard(
                   currentCardTarget as any,
-                  text,
+                  displayClean(text),
                   false,
                   account.config as DingtalkConfig,
                   log
@@ -595,6 +660,8 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         // 流式模式但没有 card target：降级到非流式发送
         // 或者非流式模式：使用普通消息发送
         if (info?.kind === "final") {
+          // 非流式最终发送：选定最终答案（marker 优先）+ 剥离尾标记 + 套固定模板
+          text = await applyReplyTemplate(finalClean(finalMarkedText ?? text));
           log.info(`[DingTalk][deliver] 降级到非流式发送，文本长度=${text.length}, isTextMode=${isTextMode}, groupReplyMode=${groupReplyMode}`);
           try {
             for (const chunk of core.channel.text.chunkTextWithMode(
@@ -682,11 +749,14 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         }
         
         log.debug(`[DingTalk][onPartialReply] 收到部分响应，文本长度=${payload.text.length}`);
-        
-        // 异步模式下禁用流式更新
+
+        // 观察标记：更新最终答案认定（marker / 非 reasoning 兜底）
+        observeReply(payload.text, (payload as any).isReasoning);
+
+        // 异步模式下禁用流式更新（剥离标记防泄漏）
         if (asyncMode) {
           log.debug(`[DingTalk][onPartialReply] 异步模式，累积响应`);
-          asyncModeFullResponse = payload.text;
+          asyncModeFullResponse = finalClean(finalMarkedText ?? payload.text);
           return;
         }
         
@@ -700,7 +770,9 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           const now = Date.now();
           if (now - lastUpdateTime >= updateInterval) {
             const { FILE_MARKER_PATTERN, VIDEO_MARKER_PATTERN, AUDIO_MARKER_PATTERN } = await import('./services/media/common.ts');
-            const displayContent = accumulatedText
+            // 见到 [-final-] 后卡片只展示最终答案；否则展示当前文本（去尾部完整/半截标记，正文不动）。
+            const displaySource = finalMarkedText ?? accumulatedText;
+            const displayContent = displayClean(displaySource)
               .replace(FILE_MARKER_PATTERN, '')
               .replace(VIDEO_MARKER_PATTERN, '')
               .replace(AUDIO_MARKER_PATTERN, '')

@@ -337,6 +337,16 @@ export const dingtalkPlugin: ChannelPlugin<ResolvedDingtalkAccount> = {
         ...(account.clientSecret != null ? { clientSecret: account.clientSecret } : {}),
       };
 
+      // marker 剥离（非流式 / 无 AI Card 路径）：带标记 → 取最终答案 + 剥离
+      if (text && (text.includes("[-process-]") || text.includes("[-final-]"))) {
+        const i = text.lastIndexOf("[-final-]");
+        let cleaned = i >= 0 ? text.slice(i + "[-final-]".length) : text;
+        cleaned = cleaned.split("[-process-]").join("").split("[-final-]").join("").replace(/^[ \t\r\n]+/, "");
+        createLogger(account.config?.debug ?? false, 'DingTalk:SendText')
+          .info(`[DingTalk][marker] sendText 检测到标记，已剥离（${text.length}→${cleaned.length} 字）`);
+        text = cleaned;
+      }
+
       // 若当前群聊有活跃 AI Card（由 reply-dispatcher 注册），则将此次 outbound.sendText
       // 路由为 AI Card 流式更新，而非发送独立消息气泡。
       // 这解决了 AI 在 automatic 模式下仍调用 message 工具发送中间状态消息导致的"刷屏"问题。

@@ -53,7 +53,7 @@ export function resolveAgentWorkspaceDir(
   }
   
   // 2. 使用默认路径规则
-  if (agentId === 'main' || agentId === cfg.defaultAgent) {
+  if (agentId === 'main' || agentId === (cfg as any).defaultAgent) {
     // 默认 Agent 使用 ~/.openclaw/workspace
     return path.join(os.homedir(), '.openclaw', 'workspace');
   }

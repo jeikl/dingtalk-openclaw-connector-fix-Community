@@ -259,7 +259,7 @@ export function registerGatewayMethods(api: OpenClawPluginApi) {
     const { loadConfig } = await import('openclaw/plugin-sdk/config-runtime');
     const cfg = loadConfig();
     try {
-      const { docId, operatorId: rawOperatorId, accountId } = params || {};
+      const { docId, operatorId: rawOperatorId, accountId } = (params || {}) as Record<string, string | undefined>;
       const account = resolveDingtalkAccount({ cfg, accountId });
 
       if (!account.config?.clientId) {
@@ -312,7 +312,7 @@ export function registerGatewayMethods(api: OpenClawPluginApi) {
     const { loadConfig } = await import('openclaw/plugin-sdk/config-runtime');
     const cfg = loadConfig();
     try {
-      const { spaceId, title, content, accountId } = params || {};
+      const { spaceId, title, content, accountId } = (params || {}) as Record<string, string | undefined>;
       const account = resolveDingtalkAccount({ cfg, accountId });
 
       if (!account.config?.clientId) {
@@ -352,7 +352,7 @@ export function registerGatewayMethods(api: OpenClawPluginApi) {
     const { loadConfig } = await import('openclaw/plugin-sdk/config-runtime');
     const cfg = loadConfig();
     try {
-      const { docId, content, accountId } = params || {};
+      const { docId, content, accountId } = (params || {}) as Record<string, string | undefined>;
       const account = resolveDingtalkAccount({ cfg, accountId });
 
       if (!account.config?.clientId) {
@@ -389,7 +389,7 @@ export function registerGatewayMethods(api: OpenClawPluginApi) {
     const { loadConfig } = await import('openclaw/plugin-sdk/config-runtime');
     const cfg = loadConfig();
     try {
-      const { keyword, spaceId, accountId } = params || {};
+      const { keyword, spaceId, accountId } = (params || {}) as Record<string, string | undefined>;
       const account = resolveDingtalkAccount({ cfg, accountId });
 
       if (!account.config?.clientId) {
@@ -426,7 +426,7 @@ export function registerGatewayMethods(api: OpenClawPluginApi) {
     const { loadConfig } = await import('openclaw/plugin-sdk/config-runtime');
     const cfg = loadConfig();
     try {
-      const { spaceId, parentId, accountId } = params || {};
+      const { spaceId, parentId, accountId } = (params || {}) as Record<string, string | undefined>;
       const account = resolveDingtalkAccount({ cfg, accountId });
 
       if (!account.config?.clientId) {

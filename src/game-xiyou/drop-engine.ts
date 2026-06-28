@@ -136,7 +136,7 @@ export function executeDrop(
   collection: UserCollection
 ): DropResult {
   const emptyResult: DropResult = {
-    monster: { id: '', name: '', quality: 'normal', origin: '', relatedProduct: null, captureQuote: '' },
+    monster: { id: '', name: '', emoji: '', quality: 'normal', origin: '', relatedProduct: null, captureQuote: '' },
     isShiny: false, isNew: false, expGained: 0,
     isPityTriggered: false, isUpMonster: false,
     escaped: false, escapeRate: 0, escapeModifiers: [],
