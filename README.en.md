@@ -23,6 +23,7 @@
 
 | Date | Tag | Update |
 |------|------|--------|
+| 2026-06-28 | ✨ | Install wizard now detects existing config: skip QR when a bot already exists; after QR, choose to overwrite or add a bot (bindings maintained automatically, other configs untouched) |
 | 2026-06-28 | 📦 | Now published to npm (`@jeik/dingtalk-connector`) with one-command scan-to-install; `--force` overwrites for updates, no uninstall needed |
 | 2026-06-28 | 🐛 | Fixed the connector mistaking an intermediate progress message for the final answer and ending AI Card rendering too early when the model emits multiple progress messages in one turn (card now finalized only at turn end) |
 | 2026-05-14 | ✨ | Markdown image support for direct URLs and local paths, no download required |

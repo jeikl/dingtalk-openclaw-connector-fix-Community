@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.21] - 2026-06-28
 
+### 新增 / Added
+- ✨ **安装向导新增「已存在配置」检测** — `npx -y @jeik/dingtalk-connector install` 会先检测 `channels.dingtalk-connector` 下是否已有非空机器人配置：① 已存在则询问「是否跳过扫码添加机器人」，选是则不扫码、直接沿用现有配置完成安装；② 选否则扫码登录成功后，再询问「是否覆盖原有配置」——覆盖则只保留新机器人，不覆盖则新增一个机器人账号并询问要绑定的智能体 id（默认 `main`）。新增/覆盖均自动维护 `bindings`（旧扁平结构自动迁为 `accounts` 结构、补齐绑定），不会覆盖其它渠道或其它机器人的配置。  
+  **Install wizard now detects existing config** — `npx -y @jeik/dingtalk-connector install` first checks for a non-empty bot under `channels.dingtalk-connector`: (1) if present, asks whether to skip the QR step and keep the existing config; (2) if you proceed, after a successful QR login it asks whether to overwrite — overwrite keeps only the new bot, otherwise it adds a new bot account and asks which agent id to bind (default `main`). Both paths maintain `bindings` automatically (legacy flat structure is migrated to `accounts`, bindings backfilled) without clobbering other channels or bots.
+
 ### 修复 / Fixes
 - 🐛 **AI Card 提前结束渲染修复** — 修复连接器在一轮对话中，因模型发送多条过程消息而把中间某条过程消息当成最终答案、提前定稿并结束 AI Card 渲染的问题。现在卡片仅在整轮对话结束（`onIdle`）时定稿，中间过程消息只实时刷新卡片内容、不收尾，确保最终答案稳定渲染、不被"卡在半截"。  
   **AI Card premature finalization fix** — Fixed the connector mistaking an intermediate progress message for the final answer and finalizing the AI Card too early when the model emits multiple progress messages in one turn. The card is now finalized only when the whole turn completes (`onIdle`); intermediate messages merely refresh the card content without closing it, so the final answer always renders stably instead of getting stuck mid-way.

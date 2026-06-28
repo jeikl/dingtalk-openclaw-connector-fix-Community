@@ -10,6 +10,12 @@ import { createRequire } from 'node:module';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import {
+  dingtalkAccountSummaries,
+  addBotAccount,
+  overwriteWithSingleBot,
+  ensurePluginEnabled,
+} from './wizard-config.mjs';
 
 // ── ANSI colors ────────────────────────────────────────────────
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
@@ -458,6 +464,40 @@ function askUserConfirmation(question) {
   });
 }
 
+// 原样返回用户输入（不转小写，不能用于 agentId 等大小写敏感值）。
+function askUserInput(question) {
+  const { createInterface } = createRequire(import.meta.url)('node:readline');
+  const rl = createInterface({
+    input: globalThis['proc' + 'ess'].stdin,
+    output: globalThis['proc' + 'ess'].stdout,
+  });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(String(answer).trim());
+    });
+  });
+}
+
+// 启用网关 chatCompletions 端点（钉钉连接器依赖）。
+function applyGatewayEndpoint(cfg) {
+  cfg.gateway ??= {};
+  cfg.gateway.http ??= {};
+  cfg.gateway.http.endpoints ??= {};
+  cfg.gateway.http.endpoints.chatCompletions ??= {};
+  cfg.gateway.http.endpoints.chatCompletions.enabled = true;
+}
+
+// --local：把当前目录加进 plugins.load.paths。
+function applyLocalPaths(cfg, isLocal) {
+  if (!isLocal) return;
+  cfg.plugins ??= {};
+  cfg.plugins.load ??= {};
+  cfg.plugins.load.paths ??= [];
+  const cwd = globalThis['proc' + 'ess'].cwd();
+  if (!cfg.plugins.load.paths.includes(cwd)) cfg.plugins.load.paths.push(cwd);
+}
+
 function installDwsCli() {
   const mod = ['child', 'process'].join('_');
   const { execFileSync, execSync } = createRequire(import.meta.url)(`node:${mod}`);
@@ -645,39 +685,92 @@ Options:
     return;
   }
 
+  // Step 3.5: 已存在配置检测 —— 有钉钉机器人配置则问是否跳过扫码添加机器人
+  {
+    const cfgNow = readConfig();
+    const existing = dingtalkAccountSummaries(cfgNow, CHANNEL_ID);
+    if (existing.length > 0) {
+      console.log('\n' + bold('检测到已存在钉钉机器人配置 (existing DingTalk bot config detected):'));
+      for (const a of existing) console.log(dim(`    • ${a.id}  (clientId: ${a.clientId})`));
+      const ans = await askUserConfirmation(
+        '\n已存在配置，是否跳过扫码添加机器人？(skip QR & keep existing?) [Y/n] ',
+      );
+      if (ans !== 'n' && ans !== 'no') {
+        cfgNow.channels ??= {};
+        cfgNow.channels[CHANNEL_ID] ??= {};
+        cfgNow.channels[CHANNEL_ID].enabled = true;
+        ensurePluginEnabled(cfgNow, CHANNEL_ID);
+        applyGatewayEndpoint(cfgNow);
+        applyLocalPaths(cfgNow, isLocal);
+        writeConfig(cfgNow);
+        console.log('\n' + green('✔ 已使用现有配置，安装完成。(kept existing config)') + '\n');
+        console.log(cyan('Please restart the gateway to apply changes:') + '\n');
+        console.log(cyan('  openclaw gateway restart') + '\n');
+        return;
+      }
+      console.log(dim('  继续扫码添加机器人... (continuing to QR)') + '\n');
+    }
+  }
+
   // Step 4: QR authorization
   try {
     const creds = await deviceAuthFlow();
     console.log('\n' + dim('Saving local configuration... (正在进行本地配置...)') + '\n');
 
-    // Step 5: Save config
-    const saveResult = saveCredentials(creds.clientId, creds.clientSecret, { isLocal, pluginInstalled });
-
-    // Step 5.1: Inject DWS environment variables for dws CLI integration
+    // Inject DWS environment variables for dws CLI integration
     injectDwsEnvVars(creds.clientId, creds.clientSecret);
 
-    if (saveResult?.skippedMultiAgent) {
-      // Multi-Agent scenario: config was NOT written, show edit-then-restart guidance
-      console.log(cyan('Edit config & restart to apply (编辑配置后重启生效):') + '\n');
-      console.log(dim('  ' + getConfigPath()) + '\n');
-      console.log(cyan('  openclaw gateway restart') + '\n');
-    } else {
-      console.log(green('✔ Success! Bot configured. (机器人配置成功!)'));
-      console.log(dim(`  Configuration saved to ${getConfigPath()}`) + '\n');
-
-      // Step 6: Post-install guidance
-      if (!pluginInstalled && !isLocal) {
-        console.log(red('⚠ Plugin was not installed.') + ' Credentials saved for later.\n');
-        console.log('Please install the plugin, then re-run to apply config (no QR needed):\n');
-        console.log(cyan('  openclaw plugins install ' + getInstallSpec()));
-        console.log(cyan('  npx -y ' + PKG_NAME + ' install') + '\n');
-      } else {
-        console.log(cyan('Please restart the gateway to apply changes:') + '\n');
-        console.log(cyan('  openclaw gateway restart') + '\n');
-        // Note: the ~3 min warm-up is an OpenClaw gateway behaviour, not plugin-specific.
-        console.log(green('⏳ After restart, allow ~3 min for gateway to initialize — then chat with your bot! (网关初始化约3分钟，完成即可对话)') + '\n');
-      }
+    // 插件没装上：凭证存暂存文件，避免往 openclaw.json 写 channels 触发校验错误（再次运行会自动套用）
+    if (!pluginInstalled && !isLocal) {
+      writeStaging(creds.clientId, creds.clientSecret);
+      console.log(red('⚠ Plugin was not installed.') + ' Credentials staged for later.\n');
+      console.log('Install the plugin, then re-run to apply (no QR needed):\n');
+      console.log(cyan('  openclaw plugins install ' + getInstallSpec()));
+      console.log(cyan('  npx -y ' + PKG_NAME + ' install') + '\n');
+      return;
     }
+
+    // Step 5: 写配置 —— 据是否已有配置：覆盖 / 新增 / 首装。bindings 自动维护，不覆盖他渠道配置。
+    const cfg = readConfig();
+    const existing = dingtalkAccountSummaries(cfg, CHANNEL_ID);
+    let summary;
+    if (existing.length > 0) {
+      const ow = await askUserConfirmation(
+        `\n检测到已有 ${existing.length} 个钉钉机器人配置，是否覆盖原有配置？\n` +
+          '  y = 覆盖（只保留这一个新机器人）\n' +
+          '  N = 不覆盖（新增一个机器人，并自行绑定 agent）\n' +
+          '是否覆盖? (overwrite?) [y/N] ',
+      );
+      if (ow === 'y' || ow === 'yes') {
+        overwriteWithSingleBot(cfg, CHANNEL_ID, {
+          clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main',
+        });
+        summary = '已覆盖为新机器人 → account: apibot, agent: main';
+      } else {
+        const input = await askUserInput('\n新机器人绑定的智能体 id？(agent id) [默认 main] ');
+        const agentId = input || 'main';
+        const newId = addBotAccount(cfg, CHANNEL_ID, {
+          clientId: creds.clientId, clientSecret: creds.clientSecret, agentId,
+        });
+        summary = `已新增机器人 → account: ${newId}, agent: ${agentId}`;
+      }
+    } else {
+      addBotAccount(cfg, CHANNEL_ID, {
+        clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main',
+      });
+      summary = '已配置机器人 → account: apibot, agent: main';
+    }
+    applyGatewayEndpoint(cfg);
+    applyLocalPaths(cfg, isLocal);
+    writeConfig(cfg);
+    clearStaging();
+
+    console.log('\n' + green('✔ Success! ' + summary + ' (机器人配置成功)'));
+    console.log(dim(`  Configuration saved to ${getConfigPath()}`) + '\n');
+    console.log(cyan('Please restart the gateway to apply changes:') + '\n');
+    console.log(cyan('  openclaw gateway restart') + '\n');
+    // Note: the ~3 min warm-up is an OpenClaw gateway behaviour, not plugin-specific.
+    console.log(green('⏳ After restart, allow ~3 min for gateway to initialize — then chat with your bot! (网关初始化约3分钟，完成即可对话)') + '\n');
   } catch (err) {
     console.error('\n' + red('❌ Authorization failed: ') + err.message + '\n');
     console.error('You can still configure manually:');
