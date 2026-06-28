@@ -8,8 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.21] - 2026-06-28
 
 ### 修复 / Fixes
-- 🐛 **回复标记定稿改为位置无关 (reply marker position-agnostic)** — 配合 prompt-rewriter 打标记功能：旧逻辑把"最终答案"认定为 `[-final-]` 标记**之后**的内容，当 AI 把标记打在消息**开头**时取到空串，导致钉钉显示"✅ 任务执行完成（无文本输出）"、webchat 残留标记、流式卡片漏出半截标记。现改为**不论标记在开头/中间/结尾，只删那一个标记 token**，正文里同名字面量原样保留；流式展示额外剥离未闭合的半截标记（如 `[-fin`）。无标记时仍走 OpenClaw 原生 `isReasoning`/`kind=final` 兜底，卡片只在 `onIdle`（整轮结束）定稿，不会被中间过程消息提前结束渲染。  
-  **Reply marker finalization is now position-agnostic** — Previously the "final answer" was the text *after* the `[-final-]` marker, so when the AI put the marker at the *start* of a message the result was empty (DingTalk showed "task completed (no text)", webchat kept the marker, streaming cards leaked partial markers). Now exactly one marker token is removed regardless of position (head/middle/tail); literal occurrences in the body are preserved; streaming view also strips unterminated partial markers. With no markers it still falls back to OpenClaw's native `isReasoning`/`kind=final`; the card is finalized only on `onIdle` (turn end), never cut short by an intermediate message.
+- 🐛 **AI Card 提前结束渲染修复** — 修复连接器在一轮对话中，因模型发送多条过程消息而把中间某条过程消息当成最终答案、提前定稿并结束 AI Card 渲染的问题。现在卡片仅在整轮对话结束（`onIdle`）时定稿，中间过程消息只实时刷新卡片内容、不收尾，确保最终答案稳定渲染、不被"卡在半截"。  
+  **AI Card premature finalization fix** — Fixed the connector mistaking an intermediate progress message for the final answer and finalizing the AI Card too early when the model emits multiple progress messages in one turn. The card is now finalized only when the whole turn completes (`onIdle`); intermediate messages merely refresh the card content without closing it, so the final answer always renders stably instead of getting stuck mid-way.
 
 ### 其他 / Misc
 - 📦 **社区版改为 npm 发布** — 包名 `@dingtalk-real-ai/dingtalk-connector` → `@jeik/dingtalk-connector`（同 channel id `dingtalk-connector`，配置不变）；新增 `npx -y @jeik/dingtalk-connector install` 一键扫码安装；README 安装方式重排为「npm 优先 + 本地构建」，移除卸载步骤（`--force` 即覆盖更新）。  
