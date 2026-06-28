@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.21] - 2026-06-28
 
 ### 新增 / Added
+- ✨ **安装向导支持「增强版 AI Card」开关** — 在选择机器人账号后，向导新增「是否启用增强版 AI Card」选项；启用后使用社区共享的 cardTemplateId（`0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema`），可自定义 cardContentVar（默认 `content`）。字段写入对应账号的 `cardTemplateId` / `cardContentVar`，未启用则不写。  
+  **Install wizard supports 「Enhanced AI Card」 toggle** — After bot account selection the wizard asks whether to enable the enhanced AI Card template (shared `cardTemplateId`); if enabled, you can override `cardContentVar` (default `content`). Both fields are written to the bot account. When disabled nothing is written.
 - ✨ **安装向导支持手动填入凭证** — 取凭证环节新增选择：扫码自动获取，或**手动填入已有的 clientId/clientSecret**（跳过扫码）。可用 `--manual` / `-m` 直接进入手动模式。适合已在钉钉后台拿到 AppKey/AppSecret、或无法扫码的场景。  
   **Install wizard supports manual credential entry** — At the credential step you can now choose QR scan or **manually enter an existing clientId/clientSecret** (skipping the QR). Use `--manual` / `-m` to go straight to manual mode. Handy when you already have the AppKey/AppSecret or cannot scan.
 - ✨ **安装向导新增「已存在配置」检测** — `npx -y @jeik/dingtalk-connector install` 会先检测 `channels.dingtalk-connector` 下是否已有非空机器人配置：① 已存在则询问「是否跳过扫码添加机器人」，选是则不扫码、直接沿用现有配置完成安装；② 选否则扫码登录成功后，再询问「是否覆盖原有配置」——覆盖则只保留新机器人，不覆盖则新增一个机器人账号并询问要绑定的智能体 id（默认 `main`）。新增/覆盖均自动维护 `bindings`（旧扁平结构自动迁为 `accounts` 结构、补齐绑定），不会覆盖其它渠道或其它机器人的配置。  

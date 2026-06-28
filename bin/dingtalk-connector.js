@@ -511,6 +511,22 @@ function askUserInput(question) {
   });
 }
 
+// 「增强版 AI Card」开关：返回 { cardTemplateId?, cardContentVar? }，未启用返回空对象。
+// 公用模板 ID，提示中明确告知「公开共享」，引导用户决定是否启用。
+async function askEnhancedCardConfig() {
+  console.log('\n' + cyan('🎨 增强版 AI Card（共享模板）'));
+  console.log(dim('  启用后使用本社区共享的 AI Card 模板（含复制按钮等增强体验）。') + '\n');
+  console.log(dim('  cardTemplateId: 0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema') + '\n');
+  console.log(dim('  cardContentVar: content （卡片内容变量名，默认 content）') + '\n');
+  const ans = (await askUserInput('是否启用增强版 AI Card? [y/N] ')).toLowerCase();
+  if (ans !== 'y' && ans !== 'yes') return {};
+  const v = (await askUserInput('卡片内容变量名 (cardContentVar) [默认 content] ')).trim();
+  return {
+    cardTemplateId: '0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema',
+    cardContentVar: v || 'content',
+  };
+}
+
 // 启用网关 chatCompletions 端点（钉钉连接器依赖）。
 function applyGatewayEndpoint(cfg) {
   cfg.gateway ??= {};
@@ -789,6 +805,10 @@ Options:
     // Step 5: 写配置 —— 据是否已有配置：覆盖 / 新增 / 首装。bindings 自动维护，不覆盖他渠道配置。
     const cfg = readConfig();
     const existing = dingtalkAccountSummaries(cfg, CHANNEL_ID);
+
+    // 询问是否启用「增强版 AI Card」（共享模板：cardTemplateId/cardContentVar）
+    const cardFields = await askEnhancedCardConfig();
+
     let summary;
     if (existing.length > 0) {
       const ow = await askUserConfirmation(
@@ -799,20 +819,20 @@ Options:
       );
       if (ow === 'y' || ow === 'yes') {
         overwriteWithSingleBot(cfg, CHANNEL_ID, {
-          clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main',
+          clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main', ...cardFields,
         });
         summary = '已覆盖为新机器人 → account: apibot, agent: main';
       } else {
         const input = await askUserInput('\n新机器人绑定的智能体 id？(agent id) [默认 main] ');
         const agentId = input || 'main';
         const newId = addBotAccount(cfg, CHANNEL_ID, {
-          clientId: creds.clientId, clientSecret: creds.clientSecret, agentId,
+          clientId: creds.clientId, clientSecret: creds.clientSecret, agentId, ...cardFields,
         });
         summary = `已新增机器人 → account: ${newId}, agent: ${agentId}`;
       }
     } else {
       addBotAccount(cfg, CHANNEL_ID, {
-        clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main',
+        clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main', ...cardFields,
       });
       summary = '已配置机器人 → account: apibot, agent: main';
     }
