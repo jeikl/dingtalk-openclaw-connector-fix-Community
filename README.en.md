@@ -5,8 +5,8 @@
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
   <p>
-    <a href="https://www.npmjs.com/package/@dingtalk-real-ai/dingtalk-connector"><img src="https://img.shields.io/npm/v/@dingtalk-real-ai/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
-    <a href="https://www.npmjs.com/package/@dingtalk-real-ai/dingtalk-connector"><img src="https://img.shields.io/npm/dm/@dingtalk-real-ai/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm downloads" /></a>
+    <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
+    <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/dm/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm downloads" /></a>
     <a href="https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community/blob/main/LICENSE"><img src="https://img.shields.io/github/license/jeikl/dingtalk-openclaw-connector-fix-Community.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="license" /></a>
   </p>
 
@@ -23,6 +23,8 @@
 
 | Date | Tag | Update |
 |------|------|--------|
+| 2026-06-28 | 📦 | Now published to npm (`@jeik/dingtalk-connector`) with one-command scan-to-install; `--force` overwrites for updates, no uninstall needed |
+| 2026-06-28 | 🐛 | Fixed the connector mistaking an intermediate progress message for the final answer and ending AI Card rendering too early when the model emits multiple progress messages in one turn (card now finalized only at turn end) |
 | 2026-05-14 | ✨ | Markdown image support for direct URLs and local paths, no download required |
 | 2026-05-11 | 🔧 | AI Card flashing and repeated re-rendering caused by duplicate intermediate messages after Agent multi-round loop completes |
 | 2026-05-11 | 🐛 | OpenClaw 4.29+ causing DingTalk plugin to show "✅ 任务执行完成（无文本输出）" in group chat @Agent |
@@ -99,47 +101,44 @@ Before you start, make sure you have:
 
 ---
 
-## Uninstall Official Plugin (avoid conflicts)
+## Installation
 
-Remove the official plugin before installing this version:
+> Same channel id as the official plugin (`dingtalk-connector`); `--force` overwrites in place, so **no need to uninstall** the official or an older version first.
+
+### Option 1: npm (recommended)
+
+This build is published to npm (`@jeik/dingtalk-connector`).
+
+**One-command scan-to-install** (recommended — DingTalk QR scan handles: bot creation → credentials → plugin install → config write):
 
 ```bash
-# List installed plugins
-openclaw plugins list
+npx -y @jeik/dingtalk-connector install
+```
 
-# Uninstall official version
-openclaw plugins uninstall dingtalk-connector
+**Or install the plugin only** (configure credentials yourself, see advanced docs below):
 
-# Restart to apply changes
+```bash
+openclaw plugins install @jeik/dingtalk-connector --force
+# or
+npx openclaw@latest add @jeik/dingtalk-connector
+
 openclaw gateway restart
 ```
 
----
-
-## Manual Build & Deployment
-
-This version requires manual compilation (community fix, not published to npm):
+### Option 2: Local build artifact (development / offline)
 
 ```bash
 # 1. Clone repo
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 
-# 2. Install, build & pack
+# 2. Install, build & pack (npm or pnpm)
+npm install && npm run build && npm pack       # → jeik-dingtalk-connector-0.8.21.tgz
+# pnpm install && pnpm run build && pnpm pack
 
-# npm
-npm install
-npm run build
-npm pack
-
-# or pnpm
-pnpm install
-pnpm run build
-pnpm pack
-
-# 3. Install to OpenClaw and restart (built artifact in current dir)
-npx openclaw plugins install ./dingtalk-real-ai-dingtalk-connector-0.8.20-fix6.tgz
-npx openclaw gateway restart
+# 3. Install to OpenClaw and restart
+openclaw plugins install ./jeik-dingtalk-connector-0.8.21.tgz --force
+openclaw gateway restart
 ```
 
 ---
