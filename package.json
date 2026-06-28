@@ -86,7 +86,8 @@
   "homepage": "https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community#readme",
   "bugs": "https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community/issues",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   },
   "dependencies": {
     "axios": "1.14.0",
