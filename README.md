@@ -1,10 +1,10 @@
 <div align="center">
   <img alt="DingTalk" src="https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-openclaw-connector/main/docs/images/dingtalk.svg" width="72" height="72" />
   <h1>dingtalk-openclaw-connector（社区维护版）</h1>
-  <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
+  <p>基于官方 <strong>v0.8.21</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix20</strong>（已发布到 npm，使用方式见下方「安装」；`latest` 仍指向 v0.8.21，修复版用 `@fix` 或显式版本）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21</strong>（已发布到 npm，`latest` 指向此版本，包含全部历史 fix 修复 + 社区独有增强；使用方式见下方「安装」）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,17 +25,16 @@
 
 | 日期 | 标识 | 更新内容 |
 |------|------|---------|
+| 2026-06-29 | 🐛 | **修复钉钉 AI 卡片流式回复不完整 例 “你...” 的问题** ：采用**延迟建卡**模式，让流式文本积累更多文本，把建卡时机放到真正的文本到来之后，再进行建卡流式卡片展示 |
 | 2026-06-29 | 🐛 | **修复 message 工具发卡 content 为空**：`finishAICard` 简化后直接 PUT FINISHED，对 reply-dispatcher 路径（已流式过）无影响，但 message 工具走的「新建卡立刻 finish」路径（`createAICardForTarget` → `finishAICard`，`inputingStarted=false`）会跳过 INPUTING 状态过渡，导致钉钉不渲染 content（卡片空白）。`finishAICard` 现仅在 `!inputingStarted` 时先调一次 `streamAICard(..., /*finished*/ false)` 走完 INPUTING + 内容写入再 FINISHED（`finished=false` 避免触发"假流式回放"，已流式过的路径 `inputingStarted=true` 完全不受影响）。**升级：** `npm install -g @jeik/dingtalk-connector@fix` |
-| 2026-06-29 | ✨ | **答案卡模式**（默认开启）：最终答案超过 `answerActToken`（默认 600）token 时，原流式卡定格"✅ 思考完成"、另投一张**静态答案卡**，规避钉钉流式卡 FINISHED 后仍抖动的官方 bug；短答案仍在原卡定稿。模板/阈值可配（`answerCardTemplateId` / `answerActToken`） |
-| 2026-06-29 | ✨ | **工具调用进度**：调用工具时原卡流式显示 `🔧 正在调用工具：<工具名>`，结束后正常更新为回复 |
-| 2026-06-29 | 🐛 | **修复工具调用失败被当最终答案**：dws 等工具失败结果（带 `isError`/`isStatusNotice`）以前偶发被当最终答案、提前停渲染；现按 OpenClaw 官方标准排除，仅展示不计入答案 |
-| 2026-06-29 | 🎯 | **回复标记系统**：配合 prompt-rewriter 的 `[-process-]`/`[-final-]` 标记——过程段逐字流式、出现 `[-final-]` 一次性定稿（去掉"假流式回放"）；标记不展示给用户，优先级高于 OpenClaw 默认兜底 |
-| 2026-06-29 | 🔧 | 安装向导：`getInstallSpec` 钉死精确版本（修复"装修复版却被装成正式版"）；dws 已安装时询问是否跳过更新；检测并可禁用遮蔽 npm 版的本地插件副本 |
-| 2026-06-28 | ✨ | 安装向导新增「已存在配置」检测：已有机器人配置可跳过扫码；扫码后可选覆盖或新增机器人（自动维护 bindings、不覆盖其它配置） |
-| 2026-06-28 | 📦 | 改为发布到 npm（`@jeik/dingtalk-connector`），新增一键扫码安装命令；`--force` 覆盖更新无需卸载 |
+| 2026-06-29 | ✨ | **修复 webchat 中最终答案已生成，但由于钉钉上游流式卡片的原因导致长文本一直渲染的问题**：新增**答案卡模式（默认开启）**，钉钉回复默认会绑定一张流式卡片和答案卡片（默认内置），最终答案如果 token >  `answerActToken`（默认 600）时，原流式卡片直接显示"✅ 思考完成"、另投一张独立的**静态答案卡**，规避钉钉流式卡的官方固定速度渲染的 bug；短答案仍在原流式卡渲染。长文本新建答案卡快速回复，短文本回答不影响用户体验。模板id/阈值可配（`answerCardTemplateId` / `answerActToken`） |
+| 2026-06-29 | ✨ | **增加 AI 卡片工具流式展示工具调用进度**：增加调用工具时原卡流式显示 `🔧 正在调用工具：<工具名>`，结束后正常更新为回复 本功能补齐官方连接器未处理 tool 回调的短板|
+| 2026-06-29 | 🐛 | **修复多条文本回答、工具调用错误等异常情况导致 AI流式卡片提前停止渲染的问题，**：dws 等工具失败结果（带 `isError`/`isStatusNotice`）以前偶发被当最终答案、提前停渲染；现按 OpenClaw 官方标准排除，但原版官方 dingtalk-connector 并没有考虑这方面，本社区版已完美修复支持，仅展示不计入答案 |
+| 2026-06-29 | 🔧 | **安装向导对比官方超级增强**：安装向导支持**增强版AI card、已有配置跳过、扫码配置、填入clientID和clientSecret配置、dws 改为更新最新的 latest 版本、检测并可禁用遮蔽 npm 版的本地插件副本等**，安装向导更健壮 更易懂 更不会覆盖|
+| 2026-06-28 | 📦 | **本仓库已上线npm官方仓库包**：`@jeik/dingtalk-connector`，新增一键扫码安装命令；`--force` 覆盖更新无需卸载 |
 | 2026-06-28 | 🐛 | 修复模型一轮内发送多条过程消息时，连接器把中间过程消息当成最终答案、提前结束 AI Card 渲染的问题（改为整轮结束才定稿卡片） |
-| 2026-05-14 | ✨ | Markdown 图片发送支持直链和本地路径，无需下载到本地，请参考下列提示词|
-| 2026-05-11 | 🔧 | Agent 多轮循环完成后，中间过程消息重复发送到钉钉对话，造成刷屏和 AI Card 倒放重渲染 |
+| 2026-05-14 | ✨ | **Markdown 图片发送支持直链和本地路径，无需下载到本地，请参考下列提示词** |
+| 2026-05-11 | 🔧 | **Agent 多轮循环完成后，中间过程消息重复发送到钉钉对话，造成刷屏和 AI Card 倒放重渲染** |
 | 2026-05-11 | 🐛 | OpenClaw 4.29+ 版本导致钉钉插件失效，群聊 @Agent 回复显示"✅ 任务执行完成（无文本输出）" |
 | 2026-05-08 | 🌐 | 未注册的 Pong 监听器导致的 WebSocket 幻影重连，来源于 [PR #566](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/566)（[Majorshi](https://github.com/Majorshi) 提交） |
 
@@ -181,6 +180,8 @@
 
 ```bash
 npx -y @jeik/dingtalk-connector install
+
+npx -y @jeik/dingtalk-connector --force ##强制安装 适用于本地已有 dingtalk-connector 的情况 第一条命令安装不了就用这个强制安装
 ```
 
 **或仅安装插件**（自行配置凭证，见下方进阶文档）：
