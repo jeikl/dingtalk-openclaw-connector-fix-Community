@@ -1,10 +1,10 @@
 <div align="center">
   <img alt="DingTalk" src="https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-openclaw-connector/main/docs/images/dingtalk.svg" width="72" height="72" />
   <h1>dingtalk-openclaw-connector（Community Maintained Fork）</h1>
-  <p>Community maintained fork of the official <strong>v0.8.21</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
+  <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21</strong> (on npm; `latest` points to this version — includes every historical fix plus the community's exclusive enhancements. See "Installation" below).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.23</strong> (on npm; `latest` points to this version — includes every historical fix plus the community's exclusive enhancements. See "Installation" below).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>

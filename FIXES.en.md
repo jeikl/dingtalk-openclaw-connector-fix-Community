@@ -5,9 +5,9 @@ This file documents all bug fixes in the community maintained version relative t
 
 ---
 
-## v0.8.21 (2026-06-29 · Community Maintained)
+## v0.8.23 (2026-06-29 · Community Maintained)
 
-> Branched from the official v0.8.21; this community-maintained release consolidates all of fix3 through fix19 plus 6 community-exclusive enhancements exclusive to this build. This section documents the items in this release (previous prefix `0.8.21-fix20`). Earlier fixes (fix1–fix6) follow below.
+> Branched from the official v0.8.20; this community-maintained release consolidates all of fix3 through fix19 plus 6 community-exclusive enhancements exclusive to this build. This section documents the items in this release. (npm publish as 0.8.21 hit an E400 conflict, so it was first re-published as 0.8.22; this 0.8.22 release's README was inconsistent with the intended "based on official 0.8.20" wording, so we bumped once more to 0.8.23 to ship a tarball whose README title, version, and "based on" line all agree.) Earlier fixes (fix1–fix6) follow below.
 
 ### 🐛 Fixed incomplete DingTalk AI Card streaming replies (e.g. "你..."): deferred card creation
 
