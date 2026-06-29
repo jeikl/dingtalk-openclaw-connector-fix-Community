@@ -5,9 +5,48 @@ This file documents all bug fixes in the community maintained version relative t
 
 ---
 
-## v0.8.23 (2026-06-29 · Community Maintained)
+## v0.8.21-fix22 (2026-06-29)
 
-> Branched from the official v0.8.20; this community-maintained release consolidates all of fix3 through fix19 plus 6 community-exclusive enhancements exclusive to this build. This section documents the items in this release. (npm publish as 0.8.21 hit an E400 conflict, so it was first re-published as 0.8.22; this 0.8.22 release's README was inconsistent with the intended "based on official 0.8.20" wording, so we bumped once more to 0.8.23 to ship a tarball whose README title, version, and "based on" line all agree.) Earlier fixes (fix1–fix6) follow below.
+### 🐛 Fixed answer-card path triggering 500 (new card INPUTING transition hit template field incompatibility)
+
+**Problem**
+
+When `answerActToken` is configured (e.g. 500) and the final answer exceeds the threshold, the connector should run "answer-card mode": the streaming card finalizes to "✅ Done thinking" + a separate static answer card carries the full reply. Instead, the system logs `Request failed with status code 500`, AI Card close fails, and the reply is downgraded to a plain text message.
+
+**Root Cause**
+
+0.8.21-fix19/fix20 simplified `finishAICard` and added a `!inputingStarted` guard so message-tool sends would walk through INPUTING + content write before FINISHED (fixing empty-content cards). However, the **built-in answer-card template** (`d246b7f5-1783-4e9b-bb46-bef52d63050e.schema`) may define fields differently from the streaming template — `streamAICard`'s INPUTING transition PUTs `cardParamMap.content = "..."` to DingTalk, which strictly validates fields and returns 500 when the answer-card template doesn't accept that field.
+
+**Fix**
+
+In [src/services/messaging/card.ts:536-548](src/services/messaging/card.ts#L536-L548), add a `skipInputingWalk` parameter to `finishAICard`; in [src/services/messaging/card.ts:576](src/services/messaging/card.ts#L576), the guard becomes `!card.inputingStarted && !skipInputingWalk`; in [src/reply-dispatcher.ts:564](src/reply-dispatcher.ts#L564), the answer-card call site passes `skipInputingWalk=true`.
+
+**Behavior**
+
+| Caller | `inputingStarted` | `skipInputingWalk` | INPUTING walk? |
+|---|---|---|---|
+| message tool (`sendProactiveInternal`) | `false` | default | ✅ runs (fixes empty content) |
+| reply-dispatcher path (chat reply) | `true` | default | ❌ skipped |
+| answer card (`answerCard` mode) | `false` | `true` | ❌ skipped (this fix) |
+
+### 🔧 Answer-card threshold default 600 → 500
+
+**Problem**
+
+The original default of 600 tokens caused most Chinese LLM replies (500-700 chars) to routinely cross the threshold, so users saw "two cards" (streaming + answer) more often than necessary.
+
+**Fix**
+
+Default fallback for `answerActToken` in `src/reply-dispatcher.ts` changed 600 → 500. Schema comment in `src/config/schema.ts` updated. All README / FIXES mentions of `600` updated to `500`. Existing user configs are untouched (`Number(...) || 500` behavior unchanged).
+
+**Files Changed**
+
+- `src/services/messaging/card.ts` (`finishAICard` adds `skipInputingWalk` parameter + guard update)
+- `src/reply-dispatcher.ts` (answer-card call site passes `skipInputingWalk=true` + default threshold 600→500)
+- `src/config/schema.ts` (`answerActToken` comment 600 → 500)
+- `README.md` / `README.en.md` / `FIXES.md` / `FIXES.en.md` (default threshold 600 → 500)
+
+---
 
 ### 🐛 Fixed incomplete DingTalk AI Card streaming replies (e.g. "你..."): deferred card creation
 

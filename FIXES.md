@@ -5,9 +5,48 @@
 
 ---
 
-## v0.8.23（2026-06-29 · 社区维护版）
+## v0.8.21-fix22（2026-06-29）
 
-> 基于官方 v0.8.20 拉取本仓库，社区维护版统合了 fix3 ~ fix19 的全部修复 + 本版独有的 6 项核心增强。本节记录本版的修复/增强内容（npm publish 0.8.21 时遇到 E400 冲突，先重发为 0.8.22；本轮 0.8.22 发布时 README 与 dist-tag 同名需求不匹配，再 bump 为 0.8.23 重发，确保 npm 上 README 标题/版本/基础版本说明三者一致；早期 fix 条目（fix1 ~ fix6）参见下文历史段）。
+### 🐛 修复答案卡路径触发 500（新建卡片走 INPUTING 过渡踩模板字段不兼容）
+
+**问题描述**
+
+配置 `answerActToken` 阈值（如 500）且最终答案 token 超过阈值时，本应走"答案卡模式"：原流式卡定格"✅ 思考完成" + 新建一张静态答案卡承载完整回复。但实际触发后报 `Request failed with status code 500`，AI Card 关闭失败，最终降级成普通消息发送。
+
+**根因**
+
+0.8.21-fix19/fix20 的 `finishAICard` 简化路径 + message 工具空内容修复引入了 `!inputingStarted` 守卫，新建卡 finish 前先走 INPUTING + 内容写入再 FINISHED。但**内置答案卡模板** (`d246b7f5-1783-4e9b-bb46-bef52d63050e.schema`) 与原流式卡模板字段定义可能不同，`streamAICard` INPUTING 切换时 PUT `cardParamMap.content = "..."` 给钉钉，钉钉严格校验字段——内置答案卡模板字段不兼容时直接返回 500。
+
+**修复方案**
+
+[src/services/messaging/card.ts:536-548](src/services/messaging/card.ts#L536-L548) 给 `finishAICard` 加 `skipInputingWalk` 参数；[src/services/messaging/card.ts:576](src/services/messaging/card.ts#L576) 守卫改为 `!card.inputingStarted && !skipInputingWalk`；[src/reply-dispatcher.ts:564](src/reply-dispatcher.ts#L564) 答案卡路径调用时传 `skipInputingWalk=true`。
+
+**新增行为**
+
+| 调用方 | `inputingStarted` | `skipInputingWalk` | 走 INPUTING? |
+|---|---|---|---|
+| message 工具（`sendProactiveInternal`） | `false` | 默认 | ✅ 走（修复空内容） |
+| reply-dispatcher 路径（对话回复） | `true` | 默认 | ❌ 不走 |
+| 答案卡（`answerCard` 模式） | `false` | `true` | ❌ 不走（本修复） |
+
+### 🔧 答案卡触发阈值默认 600 → 500
+
+**问题描述**
+
+原默认阈值 600 token 在多数中文 LLM 实际回复（500-700 字）下经常跨过阈值，用户更频繁地看到"两张卡"（原流式 + 答案卡），体验略繁。
+
+**修复方案**
+
+`src/reply-dispatcher.ts` 的 `answerActToken` 兜底默认值 600 → 500。`src/config/schema.ts` 的字段注释同步。`README` / `FIXES` 全部 600 → 500。已有用户配置不动（`Number(...) || 500` 行为不变）。
+
+**修复文件**
+
+- `src/services/messaging/card.ts`（`finishAICard` 加 `skipInputingWalk` 参数 + 守卫判断）
+- `src/reply-dispatcher.ts`（答案卡路径传 `skipInputingWalk=true` + 默认阈值 600→500）
+- `src/config/schema.ts`（`answerActToken` 注释 600 → 500）
+- `README.md` / `README.en.md` / `FIXES.md` / `FIXES.en.md`（默认阈值 600 → 500）
+
+---
 
 ### 🐛 修复钉钉 AI 卡片流式回复不完整（例 "你..."）：延迟建卡
 
