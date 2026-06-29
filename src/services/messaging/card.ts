@@ -6,6 +6,7 @@
 import type { DingtalkConfig } from "../../types/index.ts";
 import { DINGTALK_API, getAccessToken } from "../../utils/token.ts";
 import { dingtalkHttp } from "../../utils/http-client.ts";
+import { FINAL_TAG, PROCESS_TAG, finalClean } from "../reply-markers.ts";
 
 // ============ 全局 AI Card 活跃注册表 ============
 // 用于让 outbound.sendText（message 工具）能感知当前会话是否有活跃的 AI Card，
@@ -259,17 +260,23 @@ export function buildDeliverBody(
 /**
  * 通用 AI Card 创建函数
  */
+// 答案专用卡模板（静态文本卡，不走流式渲染）。配 answerCard=true 时，最终答案投到这张新卡，
+// 规避钉钉流式卡 FINISHED 后仍抖动/继续渲染的官方 bug。字段同样用 content（cardContentVar）。
+export const ANSWER_CARD_TEMPLATE_ID = "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema";
+
 export async function createAICardForTarget(
   config: DingtalkConfig,
   target: AICardTarget,
   log?: any,
+  /** 覆盖卡模板 id（如答案专用卡），不传则用 config.cardTemplateId / 默认模板 */
+  templateIdOverride?: string,
 ): Promise<AICardInstance | null> {
   const targetDesc =
     target.type === "group"
       ? `群聊 ${target.openConversationId}`
       : `用户 ${target.userId}`;
 
-  const cardTemplateId = config.cardTemplateId || DEFAULT_CARD_TEMPLATE_ID;
+  const cardTemplateId = templateIdOverride || config.cardTemplateId || DEFAULT_CARD_TEMPLATE_ID;
 
   try {
     const token = await getAccessToken(config);
@@ -372,15 +379,11 @@ export async function streamAICard(
 ): Promise<void> {
   // marker 剥离：所有卡片写入都经过这里，是钉钉侧的单一 chokepoint。
   // 带标记 → 提取最终答案 + 剥离；不带 → 原样。
-  const hadMarker = content.includes("[-process-]") || content.includes("[-final-]");
-  let finalContent = content;
-  if (hadMarker) {
-    const i = content.lastIndexOf("[-final-]");
-    finalContent = i >= 0 ? content.slice(i + "[-final-]".length) : content;
-    finalContent = finalContent.split("[-process-]").join("").split("[-final-]").join("").replace(/^[ \t\r\n]+/, "");
-    log?.info?.(`[DingTalk][marker] ${finished ? "finishAICard" : "streamAICard"} 检测到标记，已剥离（${content.length}→${finalContent.length} 字）`);
+  if (content.includes(PROCESS_TAG) || content.includes(FINAL_TAG)) {
+    const cleaned = finalClean(content);
+    log?.info?.(`[DingTalk][marker] ${finished ? "finishAICard" : "streamAICard"} 检测到标记，已剥离（${content.length}→${cleaned.length} 字）`);
+    content = cleaned;
   }
-  content = finalContent;
 
   const varName = contentVar
     || (config?.cardProcessVar as string)
@@ -538,13 +541,21 @@ export async function finishAICard(
   if (config) {
     await ensureValidToken(card, config);
   }
-  const fixedContent = ensureTableBlankLines(content);
+  // 兜底剥标记（原来在 streamAICard 内做，现在 finishAICard 不再走 streamAICard，需在此剥）。
+  // 多数调用方已剥，这里只防漏。
+  let cleanContent = content;
+  if (content.includes(PROCESS_TAG) || content.includes(FINAL_TAG)) {
+    cleanContent = finalClean(content);
+    log?.info?.(`[DingTalk][marker] finishAICard 检测到标记，已剥离（${content.length}→${cleanContent.length} 字）`);
+  }
+  const fixedContent = ensureTableBlankLines(cleanContent);
   log?.info?.(
-    `[DingTalk][AICard] 开始 finish，最终内容长度=${fixedContent.length}`,
+    `[DingTalk][AICard] 开始 finish（一次性定稿，无流式回放），最终内容长度=${fixedContent.length}`,
   );
 
-  await streamAICard(card, fixedContent, true, config, log);
-
+  // 最终答案一次性定稿：直接 PUT /card/instances 设 FINISHED + 完整内容。
+  // 不再先 streamAICard(isFinalize=true) —— 那会让钉钉把已完成的最终答案重新打字回放一遍（假流式）。
+  // FINISHED 经 /card/instances 是全量更新，自带完整内容，无需先进 INPUTING。
   const body = {
     outTrackId: card.cardInstanceId,
     cardData: {

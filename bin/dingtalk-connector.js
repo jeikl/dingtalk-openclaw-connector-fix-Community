@@ -7,7 +7,7 @@
  *   node bin/dingtalk-connector.js install --local              # local dev
  */
 import { createRequire } from 'node:module';
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import {
@@ -294,19 +294,71 @@ function saveCredentials(clientId, clientSecret, { isLocal = false, pluginInstal
 
 // ── plugin install ─────────────────────────────────────────────
 function getInstallSpec() {
-  // Read version from own package.json to pass the exact version to openclaw
+  // 永远钉住"本包自己的精确版本"，让 openclaw 内部装的版本 == 你 npx 实际下到的版本。
+  // npx @fix / @0.8.21-fix7 / @latest / 不带 → 各自下到对应包 → 这里读到的就是那个版本。
+  // 不带版本号会让 openclaw 装 latest，导致"跑 fix 向导却装了正式版"那个坑。
   try {
-    const require = createRequire(import.meta.url);
-    const { version } = require('../package.json');
-    if (version && /-(alpha|beta|rc|canary)/.test(version)) {
-      // prerelease → use exact version so openclaw accepts it
-      return `${PKG_NAME}@${version}`;
-    }
+    const { version } = createRequire(import.meta.url)('../package.json');
+    if (version) return `${PKG_NAME}@${version}`;
   } catch {}
-  return PKG_NAME;
+  return PKG_NAME; // 兜底：读不到版本才退回不带版本（极少见）
 }
 
-function installPlugin() {
+// 在 plugins.load.paths 扫描范围内找会"遮蔽"npm 版的本地 dingtalk 插件副本。
+// 原理：load.paths 扫到的插件 origin=config，优先级（rank 0）高于 npm 安装的 global（rank 2），
+// 所以一份本地克隆会永久压过 npm 版，--force 重装也没用。这里浅扫一层定位它。
+// ponytail: 只扫 load.paths 下一层目录；克隆嵌套更深的极少见，需要再加深度。
+function findShadowingLocalPlugin(paths = readConfig()?.plugins?.load?.paths) {
+  if (!Array.isArray(paths)) return null;
+  const npmRoot = join(homedir(), '.openclaw', 'npm');
+  for (const p of paths) {
+    if (typeof p !== 'string') continue;
+    const base = p.startsWith('~') ? join(homedir(), p.slice(1)) : p;
+    let entries;
+    try { entries = readdirSync(base, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      // OpenClaw 扫描会跳过这些名字（discovery shouldIgnoreScannedDirectory），它们不会遮蔽，
+      // 已禁用的 .disabled 目录也在此跳过，避免重复禁用成 .disabled.disabled。
+      const lower = e.name.toLowerCase();
+      if (lower.endsWith('.bak') || lower.includes('.backup-') || lower.includes('.disabled')) continue;
+      const dir = join(base, e.name);
+      if (dir.startsWith(npmRoot)) continue; // npm 安装目录本身不算遮蔽
+      try {
+        const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'));
+        const channels = pkg?.openclaw?.channels;
+        if (pkg?.name === PKG_NAME || (Array.isArray(channels) && channels.includes(CHANNEL_ID))) {
+          return dir;
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+
+// 检测并（经确认后）禁用遮蔽 npm 版的本地副本：把目录重命名为 .disabled（可随时改回）。
+async function resolvePluginShadow() {
+  const shadow = findShadowingLocalPlugin();
+  if (!shadow) return;
+  console.log('\n' + orange('⚠ 检测到本地插件副本会覆盖刚装的 npm 版：'));
+  console.log(dim(`    ${shadow}`));
+  console.log(dim('    它在 plugins.load.paths 扫描范围内，优先级高于 npm 版，网关会一直用这份旧本地代码。') + '\n');
+  const ans = await askUserConfirmation('  是否禁用它（重命名为 .disabled，随时可改回）？[Y/n] ');
+  if (ans === 'n' || ans === 'no') {
+    console.log(dim('  已跳过。网关仍会用本地版；如需用 npm 版，请手动移走该目录或从 plugins.load.paths 移除其父路径。') + '\n');
+    return;
+  }
+  const disabled = shadow + '.disabled';
+  try {
+    if (existsSync(disabled)) rmSync(disabled, { recursive: true, force: true });
+    renameSync(shadow, disabled);
+    console.log(green(`  ✔ 已禁用：${shadow} → ${disabled}`) + '\n');
+  } catch (err) {
+    console.log(red(`  ⚠ 重命名失败：${err.message}。请手动处理该目录。`) + '\n');
+  }
+}
+
+function installPlugin(force = false) {
   const spec = getInstallSpec();
   console.log('\n' + cyan(`📦 Installing ${spec}...`) + '\n');
 
@@ -363,7 +415,9 @@ function installPlugin() {
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, BACKOFF[attempt] * 1000);
     }
     try {
-      execFileSync('openclaw', ['plugins', 'install', spec], { stdio: 'inherit' });
+      const installArgs = ['plugins', 'install', spec];
+      if (force) installArgs.push('--force');
+      execFileSync('openclaw', installArgs, { stdio: 'inherit' });
       // Always restore channels & plugins.entries from pre-install backup.
       // Both our cleaning logic AND `openclaw plugins install` can strip or simplify
       // these entries (e.g. dropping accounts sub-object). Backup takes precedence.
@@ -609,14 +663,21 @@ async function ensureDwsCli() {
     const versionDisplay = installedVersion ? `v${installedVersion}` : 'unknown version';
 
     if (!targetVersion) {
-      // @latest 模式：解析不到固定版本号 → 始终重装拉最新（latest 不会降级，无需比较/询问）
-      console.log(dim(`  ℹ dws CLI detected (${versionDisplay}), ensuring latest (@latest)...`) + '\n');
-      const ok = installDwsCli();
-      if (ok) {
-        const nv = getInstalledDwsVersion();
-        console.log(green(`  ✔ dws CLI is now ${nv ? 'v' + nv : 'latest'}`) + '\n');
+      // @latest 模式：已安装则询问是否跳过更新（默认跳过，保留当前版本）
+      const ans = await askUserConfirmation(
+        `  检测到 dws CLI 已安装 (${versionDisplay})，是否跳过更新？(skip dws update?) [Y/n] `,
+      );
+      if (ans === 'n' || ans === 'no') {
+        console.log(dim(`  正在更新 dws CLI 到最新版...`) + '\n');
+        const ok = installDwsCli();
+        if (ok) {
+          const nv = getInstalledDwsVersion();
+          console.log(green(`  ✔ dws CLI is now ${nv ? 'v' + nv : 'latest'}`) + '\n');
+        } else {
+          console.log(red('  ⚠ Update failed. Continuing with current version.') + '\n');
+        }
       } else {
-        console.log(red('  ⚠ Update failed. Continuing with current version.') + '\n');
+        console.log(dim(`  已跳过更新，保留当前版本 ${versionDisplay}。`) + '\n');
       }
       // 鉴权状态检查（与下方同逻辑）
       if (isDwsAuthenticated()) {
@@ -701,6 +762,7 @@ async function main() {
   const isLocal = argv.includes('--local') || argv.includes('-l');
   const skipDws = argv.includes('--skip-dws');
   const manual = argv.includes('--manual') || argv.includes('-m');
+  const force = argv.includes('--force') || argv.includes('-f');
 
   if (!command || command === '--help' || command === '-h') {
     console.log(`
@@ -711,11 +773,13 @@ Usage:
   npx -y ${PKG_NAME} install --manual     Enter clientId/clientSecret manually (skip QR)
   npx -y ${PKG_NAME} install --local      QR auth only (skip plugin install)
   npx -y ${PKG_NAME} install --skip-dws   Skip dws CLI installation
+  npx -y ${PKG_NAME} install --force      Force reinstall even if plugin already exists
 
 Options:
   --manual, -m     Enter existing clientId/clientSecret manually instead of QR scan
   --local, -l      Skip plugin install (for local development)
   --skip-dws       Skip dws CLI auto-installation
+  --force, -f      Force reinstall (passes --force to openclaw plugins install)
   --help, -h       Show this help
 `);
     return;
@@ -726,10 +790,18 @@ Options:
     globalThis['proc' + 'ess'].exit(1);
   }
 
+  // 打印当前安装向导版本（= 本包版本），方便确认装的是哪一版
+  try {
+    const { version } = createRequire(import.meta.url)('../package.json');
+    console.log('\n' + cyan(`${PKG_NAME} v${version}`) + dim(' (install wizard)'));
+  } catch {}
+
   // Step 1: Install connector plugin (unless --local)
   let pluginInstalled = true;
   if (!isLocal) {
-    pluginInstalled = installPlugin();
+    pluginInstalled = installPlugin(force);
+    // 安装成功后检查是否有本地副本会遮蔽 npm 版（load.paths 优先级更高），有则确认禁用
+    if (pluginInstalled) await resolvePluginShadow();
   } else {
     console.log('\n' + dim('📦 --local mode: skipping plugin install') + '\n');
   }

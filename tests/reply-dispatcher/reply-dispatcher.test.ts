@@ -71,7 +71,8 @@ describe("reply-dispatcher", () => {
     vi.clearAllMocks();
     mockResolveDingtalkAccount.mockReturnValue({
       accountId: "acc-1",
-      config: { debug: false, streaming: true },
+      // answerCard: false → 这些生命周期/QPS 测试走简单单卡定稿路径（答案卡逻辑另有专项验证）
+      config: { debug: false, streaming: true, answerCard: false },
     });
     mockGetOapiAccessToken.mockResolvedValue(null);
     mockCreateAICardForTarget.mockResolvedValue({
@@ -141,17 +142,21 @@ describe("reply-dispatcher", () => {
     const args = (globalThis as any).__dispatcherArgs;
     expect(args).toBeTruthy();
 
+    // 延迟建卡：onReplyStart 不再抢先建卡
     await args.onReplyStart();
-    expect(mockCreateAICardForTarget).toHaveBeenCalledTimes(1);
+    expect(mockCreateAICardForTarget).not.toHaveBeenCalled();
 
+    // 第一段真正内容到达时才建卡
     await args.deliver({ text: "part-1" }, { kind: "block" });
+    expect(mockCreateAICardForTarget).toHaveBeenCalledTimes(1);
     expect(mockStreamAICard).toHaveBeenCalled();
 
     await args.deliver({ text: "final-1" }, { kind: "final" });
-    expect(mockFinishAICard).toHaveBeenCalled();
 
+    // finishAICard 在 closeStreaming（onIdle/onError）定稿时调用，不在 deliver(final)
     await args.onError(new Error("x"), { kind: "final" });
     await args.onIdle();
+    expect(mockFinishAICard).toHaveBeenCalled();
     args.onCleanup();
 
     await result.replyOptions.onPartialReply?.({ text: "partial-2" });
@@ -217,7 +222,8 @@ describe("reply-dispatcher", () => {
     const args = (globalThis as any).__dispatcherArgs;
     await args.onReplyStart();
 
-    await result.replyOptions.onPartialReply?.({ text: "partial-qps-content" });
+    // 带 [-process-]（过程段）才会走逐字流式刷卡路径
+    await result.replyOptions.onPartialReply?.({ text: "partial-qps-content[-process-]" });
 
     // streamAICard 被调用一次并抛 QPS 错误
     expect(mockStreamAICard).toHaveBeenCalledTimes(1);
@@ -257,7 +263,8 @@ describe("reply-dispatcher", () => {
     const args = (globalThis as any).__dispatcherArgs;
     await args.onReplyStart();
 
-    await result.replyOptions.onPartialReply?.({ text: "partial-other" });
+    // 带 [-process-]（过程段）才会走逐字流式刷卡路径
+    await result.replyOptions.onPartialReply?.({ text: "partial-other[-process-]" });
 
     expect(mockStreamAICard).toHaveBeenCalledTimes(1);
     // 非 QPS 错误路径：fallback 消息应被发送

@@ -115,17 +115,18 @@ describe('card update regression', () => {
       await expect(streamAICard(card, 'Hello', false, log)).rejects.toThrow('Status update failed');
     });
 
-    it('should finish card by finalizing stream and setting FINISHED', async () => {
+    it('一次性定稿：只 PUT FINISHED，不再走 streaming 假流式回放', async () => {
       const { __testables } = await import('../test');
       const { finishAICard } = __testables as any;
 
       const card = { cardInstanceId: 'card_1', accessToken: 'token123', inputingStarted: true };
       await finishAICard(card, 'Final', log);
 
+      // 不再有 /card/streaming 回放
       const streamingCall = mockAxiosPut.mock.calls.find((c) => String(c[0]).includes('/v1.0/card/streaming'));
-      expect(streamingCall).toBeDefined();
-      expect(streamingCall![1].isFinalize).toBe(true);
+      expect(streamingCall).toBeUndefined();
 
+      // 只有一次 /card/instances FINISHED，带完整内容
       const finishedCall = mockAxiosPut.mock.calls.find((c) => String(c[0]).includes('/v1.0/card/instances'));
       expect(finishedCall).toBeDefined();
       expect(finishedCall![1].cardData.cardParamMap.flowStatus).toBe('3');

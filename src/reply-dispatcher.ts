@@ -38,6 +38,7 @@ import {
   isQpsLimitError,
   registerActiveCard,
   unregisterActiveCard,
+  ANSWER_CARD_TEMPLATE_ID,
   type AICardInstance,
   type AICardTarget,
 } from "./services/messaging/card.ts";
@@ -50,7 +51,7 @@ import {
   uploadAndReplaceFileMarkers,
 } from "./services/media/index.ts";
 import { getGlobalHookRunner } from "openclaw/plugin-sdk/plugin-runtime";
-import { PROCESS_TAG, FINAL_TAG, extractFinal, finalClean, displayClean } from "./services/reply-markers.ts";
+import { PROCESS_TAG, FINAL_TAG, extractFinal, finalClean, displayClean, estimateTokens } from "./services/reply-markers.ts";
 
 
 export type CreateDingtalkReplyDispatcherParams = {
@@ -115,27 +116,55 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
   let processMarkerLogged = false;
   let finalMarkerLogged = false;
 
-  // 观察每段到达的文本，更新两个认定源，并在首次检测到标记时打日志（用户无感，仅日志可见）。
-  const observeReply = (raw: string | undefined, isReasoning: boolean | undefined) => {
+  // 观察每段到达的文本，更新标记认定状态。
+  //   含 [-final-]（任意位置）→ 最终答案 = 剥光所有标记的完整正文，跳过 OpenClaw 兜底
+  //   含 [-process-]（无 [-final-]）→ 过程段，激活标记系统抑制 OpenClaw 兜底
+  //   无标记 → 走 OpenClaw 默认兜底
+  let markerSystemActive = false;
+
+    // 非正式答案 payload（工具失败/状态通知/压缩/兜底通知）→ 不参与最终答案认定。
+    // 修复：工具调用失败的结果（带 isError/isStatusNotice）以前被当成 lastAnswerText，
+    // 偶发地被当最终答案、提前停渲染。与 OpenClaw 官方判定一致：!isError && !isReasoning && !isStatusNotice。
+  const isNonAnswerPayload = (p: any): boolean =>
+    Boolean(p) && Boolean(p.isError || p.isStatusNotice || p.isCompactionNotice || p.isFallbackNotice);
+
+  const observeReply = (raw: string | undefined, payload?: any) => {
     const text = raw ?? "";
     if (!text) return;
-    if (!processMarkerLogged && text.includes(PROCESS_TAG)) {
-      processMarkerLogged = true;
-      log.info(`[DingTalk][marker] 检测到过程标记 ${PROCESS_TAG}（已剥离，不展示给用户）`);
-    }
+    if (isNonAnswerPayload(payload)) return; // 工具失败/状态通知不认定为答案
+    const isReasoning = payload?.isReasoning;
+
+    // [-final-] 出现 → 最终答案（剥光所有标记的完整正文），跳过 OpenClaw 兜底
     const fin = extractFinal(text);
     if (fin !== null) {
       if (!finalMarkerLogged) {
         finalMarkerLogged = true;
-        log.info(`[DingTalk][marker] 检测到最终标记 ${FINAL_TAG}（已剥离，以其后内容为最终答案）`);
+        log.info(`[DingTalk][marker] 检测到 ${FINAL_TAG}，最终答案=剥光标记的完整正文，跳过 OpenClaw 兜底`);
       }
-      finalMarkedText = fin;                                 // 取最后一个 [-final-] 之后内容
+      finalMarkedText = fin;
+      markerSystemActive = true;
+      return;
     }
-    if (!isReasoning && text.trim()) lastAnswerText = text;  // 非思考过程 = 正式答案
+
+    // 只有 [-process-]（无 [-final-]）→ 过程段，激活标记系统抑制兜底
+    if (text.includes(PROCESS_TAG)) {
+      if (!processMarkerLogged) {
+        processMarkerLogged = true;
+        log.info(`[DingTalk][marker] 检测到 ${PROCESS_TAG}（过程段），抑制 OpenClaw 默认兜底`);
+      }
+      markerSystemActive = true;
+      return;
+    }
+
+    // 无标记：标记系统未激活时走 OpenClaw 兜底；已激活则沉默，让标记系统独占判定
+    if (!markerSystemActive && !isReasoning && text.trim()) lastAnswerText = text;
   };
 
-  // 选定本轮最终答案：优先 marker，其次最近的非 reasoning 答案，最后退回 accumulatedText。
-  const pickFinalText = (): string => finalMarkedText ?? (lastAnswerText || accumulatedText);
+  // 选定本轮最终答案：
+  //   标记系统激活 → finalMarkedText（最终段）优先，accumulatedText 流式兜底（跳过 OpenClaw）
+  //   未激活（无标记）→ lastAnswerText（OpenClaw isReasoning 兜底），accumulatedText 兜底
+  const pickFinalText = (): string =>
+    markerSystemActive ? (finalMarkedText ?? accumulatedText) : (lastAnswerText || accumulatedText);
 
   // 对最终答案套用 prompt-rewriter 的固定模板（跑 reply_payload_sending 钩子）。失败不阻断投递。
   const applyReplyTemplate = async (text: string): Promise<string> => {
@@ -370,6 +399,9 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
     try {
       // 选定最终答案：marker 优先 → 最近非 reasoning 答案 → accumulatedText 兜底，并剥离尾标记
       let finalText = finalClean(pickFinalText());
+      // 是否有真实对话答案（在套兜底文案之前判断）。纯工具进度/无回复时为 false，
+      // 用于 answerCard 模式下决定"不另建无文本输出答案卡"。
+      const hadRealAnswer = finalText.trim().length > 0;
       log.info(
         `[DingTalk][closeStreaming] 最终答案来源=${finalMarkedText !== null ? "marker[-final-]" : (lastAnswerText ? "非reasoning答案" : "accumulatedText兜底")}，长度=${finalText.length}`
       );
@@ -478,14 +510,72 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
       // 套用 prompt-rewriter 的固定回复模板（只对最终答案）
       finalText = await applyReplyTemplate(finalText);
 
-      log.info(`[DingTalk][closeStreaming] 准备调用 finishAICard，文本长度=${finalText.length}`);
-      log.debug(`[DingTalk][closeStreaming] 最终发送内容长度=${finalText.length}`);
-      await finishAICard(
-        cardSnapshot as any,
-        finalText,
-        account.config as DingtalkConfig,
-        log
-      );
+      // ===== 答案专用卡模式（answerCard=true）=====
+      // 规避钉钉流式卡 FINISHED 后仍抖动/继续渲染的官方 bug：
+      //   1. 原流式卡 → 定格"✅ 思考完成"
+      //   2. 另建一张「答案专用卡」（静态文本模板）→ 投放最终答案（content 字段）
+      // 代价：多一条消息，但渲染正确、更快。
+      // answerCard 默认开启：不写或非 false 都视为开（显式设 false 才关）。
+      const useAnswerCard = (account.config as any)?.answerCard !== false;
+      if (useAnswerCard) {
+        // 原卡定格"思考完成"。必须用流式端点 streamAICard 覆盖可见内容——
+        // FINISHED(/card/instances) 不会刷新已流式过的内容（钉钉 bug），先 streamAICard 盖文本再 FINISHED。
+        const finalizeOriginalToDone = async () => {
+          try {
+            await streamAICard(cardSnapshot as any, "✅ 思考完成", true, account.config as DingtalkConfig, log);
+            await finishAICard(cardSnapshot as any, "✅ 思考完成", account.config as DingtalkConfig, log);
+          } catch (e: any) {
+            log.warn(`[DingTalk][closeStreaming] 原卡定格思考完成失败（忽略）：${e?.message || e}`);
+          }
+        };
+
+        // 答案卡模板（可配置 answerCardTemplateId，不填用硬编码默认）+ 触发阈值（answerActToken，默认600）
+        const answerTplId = ((account.config as any)?.answerCardTemplateId as string)?.trim() || ANSWER_CARD_TEMPLATE_ID;
+        const answerActToken = Number((account.config as any)?.answerActToken) || 600;
+        const answerTokens = estimateTokens(finalText);
+
+        if (!hadRealAnswer) {
+          // 只有工具进度 / 没真实对话答案 → 只把原卡定格"思考完成"，不另建"无文本输出"答案卡。
+          log.info(`[DingTalk][closeStreaming] answerCard 模式：无真实答案，仅定格原卡思考完成（不建答案卡）`);
+          await finalizeOriginalToDone();
+        } else if (answerTokens <= answerActToken) {
+          // 小答案（≤阈值）→ 直接在原卡定稿，不另建答案卡（避免简单任务也多一张卡，体验更好）。
+          // 用 streamAICard 覆盖可见内容（FINISHED-instances 不刷新已流式内容），再 FINISHED。
+          log.info(`[DingTalk][closeStreaming] answerCard 模式：答案约 ${answerTokens} token ≤ ${answerActToken}，原卡直接定稿（不建答案卡）`);
+          try {
+            await streamAICard(cardSnapshot as any, finalText, true, account.config as DingtalkConfig, log);
+          } catch (e: any) {
+            if (!isQpsLimitError(e)) log.warn(`[DingTalk][closeStreaming] 原卡流式覆盖最终答案失败（忽略，继续 FINISHED）：${e?.message || e}`);
+          }
+          await finishAICard(cardSnapshot as any, finalText, account.config as DingtalkConfig, log);
+        } else {
+          // 大答案（>阈值）→ 原卡定格"思考完成" + 新建答案卡投放最终答案。
+          log.info(`[DingTalk][closeStreaming] answerCard 模式：答案约 ${answerTokens} token > ${answerActToken}，原卡思考完成 + 新建答案卡（模板=${answerTplId}）`);
+          await finalizeOriginalToDone();
+          const answerCard = await createAICardForTarget(
+            account.config as DingtalkConfig,
+            target,
+            log,
+            answerTplId,
+          );
+          if (answerCard) {
+            await finishAICard(answerCard, finalText, account.config as DingtalkConfig, log);
+            log.info(`[DingTalk][closeStreaming] ✅ 答案卡投放成功`);
+          } else {
+            // 答案卡建失败 → 降级直接定稿原卡，保证用户能看到回复
+            log.warn(`[DingTalk][closeStreaming] 答案卡创建失败，降级定稿原卡`);
+            await finishAICard(cardSnapshot as any, finalText, account.config as DingtalkConfig, log);
+          }
+        }
+      } else {
+        log.info(`[DingTalk][closeStreaming] 准备调用 finishAICard，文本长度=${finalText.length}`);
+        await finishAICard(
+          cardSnapshot as any,
+          finalText,
+          account.config as DingtalkConfig,
+          log
+        );
+      }
       log.info(`[DingTalk][closeStreaming] ✅ AI Card 关闭成功`);
     } catch (error: any) {
       log.error(`[DingTalk][closeStreaming] ❌ AI Card 关闭失败：${error?.message || String(error)}`);
@@ -529,21 +619,38 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         lastAnswerText = "";
         processMarkerLogged = false;
         finalMarkerLogged = false;
-        if (streamingEnabled) {
-          // fire-and-forget：提前创建 AI Card，onPartialReply 会等待创建完成
-          void startStreaming();
-        }
+        markerSystemActive = false;
+        // 延迟建卡：不在 onReplyStart 抢先建卡，改由第一段真正的对话内容（onPartialReply /
+        // deliver block/final）按需创建。否则纯 message 工具轮次（无对话回复，deliver 计数全 0）
+        // 会留下一张没人喂的孤儿卡，收尾兜底成"无文本输出"。
         typingCallbacks.onActive?.();
       },
       deliver: async (payload, info) => {
         let text = payload.text ?? "";
-        
-        log.info(`[DingTalk][deliver] 被调用：kind=${info?.kind}, textLength=${text.length}, hasText=${Boolean(text.trim())}`);
-        log.debug(`[DingTalk][deliver] payload keys=${Object.keys(payload).join(',')}, info.kind=${info?.kind}`);
+
+        log.debug(`[DingTalk][deliver] kind=${info?.kind}, textLength=${text.length}`);
 
         // 观察标记：更新最终答案认定（marker / 非 reasoning 兜底）
-        observeReply(payload.text, (payload as any).isReasoning);
-        
+        observeReply(payload.text, payload);
+
+        // 工具失败/状态通知 payload：流式时可短暂展示，但绝不计入最终答案（不设 accumulatedText / 不当 final）。
+        // 修复：dws 等工具调用失败的结果偶发被当成最终答案、提前停渲染。
+        if (isNonAnswerPayload(payload)) {
+          if (streamingEnabled && currentCardTarget && !asyncMode && finalMarkedText === null) {
+            const now = Date.now();
+            if (now - lastUpdateTime >= updateInterval) {
+              lastUpdateTime = now;
+              try {
+                await streamAICard(currentCardTarget as any, displayClean(text), false, account.config as DingtalkConfig, log, (account.config as DingtalkConfig)?.cardContentVar as string || "msgContent");
+              } catch (e: any) {
+                if (!isQpsLimitError(e)) log.warn(`[DingTalk][deliver] 状态/错误 payload 写卡失败：${e?.message || e}`);
+              }
+            }
+          }
+          log.info(`[DingTalk][deliver] 非答案 payload（isError=${(payload as any).isError},isStatusNotice=${(payload as any).isStatusNotice}），仅展示不计入最终答案`);
+          return;
+        }
+
         // ✅ 在 final 响应时，先处理裸露的文件路径
         if (info?.kind === "final" && text.trim()) {
           const target: AICardTarget = isDirect
@@ -739,46 +846,51 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
     replyOptions: {
       ...replyOptions,  // ✅ 包含 onReplyStart、onTypingController、onTypingCleanup
       onModelSelected,
+      // 让 onToolStart 在"工具摘要隐藏"时仍回调（否则被 requiresToolSummaryVisibility 闸住，dispatch:1655）。
+      // 同时抑制 OpenClaw 默认的工具进度消息——工具进度由本连接器自己渲染到卡片。
+      allowToolLifecycleWhenProgressHidden: true,
+      suppressDefaultToolProgressMessages: true,
       ...(streamingEnabled && {
         onPartialReply: async (payload: ReplyPayload) => {
-        log.info(`[DingTalk][onPartialReply] 被调用，payload.text=${payload.text ? payload.text.length : 'null'}`);
-        log.debug(`[DingTalk][onPartialReply] textLength=${payload.text?.length ?? 0}`);
-        if (!payload.text) {
-          log.debug(`[DingTalk][onPartialReply] 空文本，跳过`);
-          return;
-        }
-        
-        log.debug(`[DingTalk][onPartialReply] 收到部分响应，文本长度=${payload.text.length}`);
+        // 注意：本回调每个 token 都触发，严禁逐次打日志（会刷屏）。只在真正发生卡片更新/出错时记。
+        if (!payload.text) return;
 
         // 观察标记：更新最终答案认定（marker / 非 reasoning 兜底）
-        observeReply(payload.text, (payload as any).isReasoning);
+        observeReply(payload.text, payload);
+
+        // 非答案 payload（工具失败/状态通知）→ 不累积、不当最终答案，直接跳过
+        if (isNonAnswerPayload(payload)) return;
 
         // 异步模式下禁用流式更新（剥离标记防泄漏）
         if (asyncMode) {
-          log.debug(`[DingTalk][onPartialReply] 异步模式，累积响应`);
           asyncModeFullResponse = finalClean(finalMarkedText ?? payload.text);
           return;
         }
-        
+
+        // 检测到 [-final-] → 最终答案不再逐字流式，停止刷卡，
+        // 改由 onIdle → closeStreaming → finishAICard 一次性定稿（无打字、无假流式回放）。
+        // 其余（过程段 [-process-]、以及无标记走 OpenClaw 默认）照常逐字流式刷卡。
+        if (finalMarkedText !== null) {
+          accumulatedText = payload.text;
+          return;
+        }
+
         // await startStreaming() 确保 AI Card 创建完成后再更新
         // startStreaming 内部会复用已有的 cardCreationPromise，不会重复创建
         await startStreaming();
-        
+
         if (currentCardTarget) {
           accumulatedText = payload.text;
-          
+
           const now = Date.now();
           if (now - lastUpdateTime >= updateInterval) {
             const { FILE_MARKER_PATTERN, VIDEO_MARKER_PATTERN, AUDIO_MARKER_PATTERN } = await import('./services/media/common.ts');
-            // 见到 [-final-] 后卡片只展示最终答案；否则展示当前文本（去尾部完整/半截标记，正文不动）。
-            const displaySource = finalMarkedText ?? accumulatedText;
-            const displayContent = displayClean(displaySource)
+            // 此处只会是过程段（finalMarkedText 非空已在上面 return）：展示当前累积文本，剥尾部完整/半截标记。
+            const displayContent = displayClean(accumulatedText)
               .replace(FILE_MARKER_PATTERN, '')
               .replace(VIDEO_MARKER_PATTERN, '')
               .replace(AUDIO_MARKER_PATTERN, '')
               .trim();
-            
-            log.debug(`[DingTalk][onPartialReply] 更新 AI Card，显示文本长度=${displayContent.length}`);
             
             // ✅ 乐观更新：在发起 HTTP 请求前立即更新 lastUpdateTime，
             // 防止并发的 onPartialReply 回调在 await 期间通过节流检查，
@@ -793,7 +905,6 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
                 log,
                 (account.config as DingtalkConfig)?.cardContentVar as string || "msgContent"
               );
-              log.debug(`[DingTalk][onPartialReply] ✅ AI Card 更新成功`);
             } catch (err: any) {
               // QPS 限流是瞬时错误：streamAICard 内部已自动退避+重试，
               // 退避期过后下一次 partial 更新会把 AI Card 内容覆盖补齐，
@@ -810,14 +921,37 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
                 await sendFallbackErrorMessage('sendMessage', err.message);
               }
             }
-          } else {
-            log.debug(`[DingTalk][onPartialReply] 节流控制，跳过本次更新（距离上次更新 ${now - lastUpdateTime}ms）`);
           }
-        } else {
-          log.warn(`[DingTalk][onPartialReply] ⚠️ AI Card 不存在，跳过更新`);
+          // 节流跳过：不打日志（高频，会刷屏）
         }
       },
       }),
+      // ===== 工具调用进度：开始调用工具时，往原卡流式显示"正在调用工具：工具名" =====
+      // OpenClaw 的 onToolStart 带干净的工具名（payload.name）。已进入最终答案 / 异步 / 非流式则跳过。
+      onToolStart: async (payload: { name?: string; phase?: string; args?: Record<string, unknown> }) => {
+        const toolName = (payload?.name || "").trim();
+        if (!toolName) return;
+        if (payload?.phase === "end" || payload?.phase === "complete") return;
+        if (!streamingEnabled || asyncMode || finalMarkedText !== null) return;
+        try {
+          await startStreaming();
+          if (!currentCardTarget) return;
+          const now = Date.now();
+          if (now - lastUpdateTime < updateInterval) return;
+          lastUpdateTime = now;
+          await streamAICard(
+            currentCardTarget as any,
+            `🔧 正在调用工具：${toolName}`,
+            false,
+            account.config as DingtalkConfig,
+            log,
+            (account.config as DingtalkConfig)?.cardContentVar as string || "msgContent",
+          );
+          log.debug(`[DingTalk][onToolStart] 工具进度写卡：${toolName}（phase=${payload?.phase}）`);
+        } catch (e: any) {
+          if (!isQpsLimitError(e)) log.warn(`[DingTalk][onToolStart] 工具进度写卡失败：${e?.message || e}`);
+        }
+      },
       // ===== 养成系统：监听 dws 命令执行 =====
       onCommandOutput: (payload: {
         itemId?: string;

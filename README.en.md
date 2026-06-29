@@ -25,6 +25,11 @@
 
 | Date | Tag | Update |
 |------|------|--------|
+| 2026-06-29 | ✨ | **Answer-card mode** (on by default): when the final answer exceeds `answerActToken` (default 600) tokens, the streaming card finalizes to "✅ Done thinking" and the full reply is delivered on a separate **static answer card**, sidestepping DingTalk's official bug where a FINISHED streaming card keeps flickering; short answers stay on the original card. Template/threshold configurable (`answerCardTemplateId` / `answerActToken`) |
+| 2026-06-29 | ✨ | **Tool-call progress**: while a tool runs, the card streams `🔧 Calling tool: <name>`, then updates to the reply when done |
+| 2026-06-29 | 🐛 | **Fixed tool failures being treated as the final answer**: failed tool results (carrying `isError`/`isStatusNotice`, e.g. dws) were occasionally taken as the final answer and stopped rendering early; now excluded per OpenClaw's own rule — shown transiently, never counted as the answer |
+| 2026-06-29 | 🎯 | **Reply marker system**: works with prompt-rewriter's `[-process-]`/`[-final-]` markers — process segments stream token-by-token, `[-final-]` triggers one-shot finalize (no "fake-stream replay"); markers never shown to the user, and take priority over OpenClaw's default fallback |
+| 2026-06-29 | 🔧 | Install wizard: `getInstallSpec` now pins the exact version (fixes "installing the fix build but getting the stable one"); asks whether to skip dws update when already installed; detects & can disable a local plugin copy shadowing the npm version |
 | 2026-06-28 | ✨ | Install wizard now detects existing config: skip QR when a bot already exists; after QR, choose to overwrite or add a bot (bindings maintained automatically, other configs untouched) |
 | 2026-06-28 | 📦 | Now published to npm (`@jeik/dingtalk-connector`) with one-command scan-to-install; `--force` overwrites for updates, no uninstall needed |
 | 2026-06-28 | 🐛 | Fixed the connector mistaking an intermediate progress message for the final answer and ending AI Card rendering too early when the model emits multiple progress messages in one turn (card now finalized only at turn end) |
@@ -68,8 +73,27 @@ Full update log: [FIXES.md](FIXES.md)（[🇨🇳 中文](FIXES.en.md)）
 | `cardContentVar` | Final response content variable, defaults to `msgContent` |
 | `cardProcessVar` | Intermediate process (block status) variable, defaults to `cardContentVar` if not set |
 | `cardToolVar` | Tool call output variable, not written to card if not set |
+| `answerCard` | Answer-card mode switch, **on by default**; set `false` to disable |
+| `answerActToken` | Answer-card trigger threshold (tokens), default `600`; final answer ≤ this stays on the original card, > this opens a separate answer card |
+| `answerCardTemplateId` | Answer-card template ID, uses the built-in default if not set (must contain a `content` variable) |
 
 > Card template must be created in [DingTalk Open Platform](https://open.dingtalk.com/) with matching variable fields.
+
+---
+
+## 🎯 Reply markers + Answer card + Tool progress (core enhancements)
+
+These make the "process → final answer" rendering on DingTalk cleaner and more stable, working around DingTalk's official streaming AI Card bug:
+
+- **Reply markers**: work with the `[-process-]` (process) / `[-final-]` (final) markers injected by [prompt-rewriter](https://www.npmjs.com/package/@jeik/prompt-rewriter).
+  - Process segments stream token-by-token; once `[-final-]` appears, streaming stops and the card is **finalized in one shot** (no DingTalk "fake-stream replay").
+  - Markers are **never visible to the user** (stripped before writing to the card) and take **priority over** OpenClaw's default fallback — preventing intermediate process text from being mistaken for the final answer and stopping rendering early.
+  - With no markers, behavior follows OpenClaw's default entirely.
+- **Answer-card mode** (on by default): when the final answer exceeds `answerActToken` (default 600) tokens, the **streaming card finalizes to "✅ Done thinking"** and a separate **static answer card** carries the full reply — avoiding DingTalk's bug where a FINISHED streaming card keeps flickering/re-rendering. Short answers stay on the original card, no extra card.
+- **Tool-call progress**: while the Agent calls a tool, the card streams `🔧 Calling tool: <name>`, then updates to the reply when the tool finishes.
+- **Tool failures no longer mis-rendered**: failed tool results (carrying `isError`/`isStatusNotice`) are shown transiently but **never treated as the final answer**.
+
+> Markers require the prompt-rewriter plugin; answer card / tool progress are built into the connector and work out of the box.
 
 ---
 

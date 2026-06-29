@@ -93,6 +93,14 @@ const DingtalkSharedConfigShape = {
   cardProcessVar: z.string().optional(),
   /** AI Card 工具输出变量名，不填则不写入工具输出 */
   cardToolVar: z.string().optional(),
+  /** 答案专用卡模式：超过 answerActToken 的最终答案投到一张新的静态文本卡，原流式卡定格"思考完成"，
+   *  规避钉钉流式卡 FINISHED 后仍抖动的官方 bug。默认开启（显式设 false 才关）。 */
+  answerCard: z.boolean().optional(),
+  /** 答案卡触发阈值（token）：最终答案估算 token ≤ 此值时直接在原卡定稿（不另建卡），
+   *  > 此值才新建答案卡。避免简单任务也多一张卡。默认 600。 */
+  answerActToken: z.number().int().positive().optional(),
+  /** 答案专用卡模板 ID：不填用内置默认模板。需是钉钉后台已发布、含 content 变量的卡片模板。 */
+  answerCardTemplateId: z.string().optional(),
 };
 
 /**

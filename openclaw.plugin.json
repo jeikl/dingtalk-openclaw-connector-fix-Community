@@ -263,6 +263,15 @@
           "cardToolVar": {
             "type": "string"
           },
+          "answerCard": {
+            "type": "boolean"
+          },
+          "answerActToken": {
+            "type": "integer"
+          },
+          "answerCardTemplateId": {
+            "type": "string"
+          },
           "accounts": {
             "type": "object",
             "additionalProperties": {
@@ -499,6 +508,15 @@
                   "type": "string"
                 },
                 "cardToolVar": {
+                  "type": "string"
+                },
+                "answerCard": {
+                  "type": "boolean"
+                },
+                "answerActToken": {
+                  "type": "integer"
+                },
+                "answerCardTemplateId": {
                   "type": "string"
                 }
               },

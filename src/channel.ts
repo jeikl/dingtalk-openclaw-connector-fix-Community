@@ -30,6 +30,7 @@ import { dingtalkOnboardingAdapter } from "./onboarding.ts";
 import { monitorDingtalkProvider } from "./core/provider.ts";
 import { sendTextToDingTalk, sendMediaToDingTalk } from "./services/messaging/index.ts";
 import { getActiveCardForConversation } from "./services/messaging/card.ts";
+import { finalClean } from "./services/reply-markers.ts";
 import type { ResolvedDingtalkAccount, DingtalkConfig } from "./types/index.ts";
 
 /** Channel identifier used across the plugin. Single source of truth. */
@@ -337,11 +338,9 @@ export const dingtalkPlugin: ChannelPlugin<ResolvedDingtalkAccount> = {
         ...(account.clientSecret != null ? { clientSecret: account.clientSecret } : {}),
       };
 
-      // marker 剥离（非流式 / 无 AI Card 路径）：带标记 → 取最终答案 + 剥离
+      // marker 剥离（非流式 / 无 AI Card 路径）：只剥头尾标记，中间的保留（agent 解释标记用）
       if (text && (text.includes("[-process-]") || text.includes("[-final-]"))) {
-        const i = text.lastIndexOf("[-final-]");
-        let cleaned = i >= 0 ? text.slice(i + "[-final-]".length) : text;
-        cleaned = cleaned.split("[-process-]").join("").split("[-final-]").join("").replace(/^[ \t\r\n]+/, "");
+        const cleaned = finalClean(text);
         createLogger(account.config?.debug ?? false, 'DingTalk:SendText')
           .info(`[DingTalk][marker] sendText 检测到标记，已剥离（${text.length}→${cleaned.length} 字）`);
         text = cleaned;
