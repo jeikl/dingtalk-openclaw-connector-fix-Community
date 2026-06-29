@@ -72,7 +72,7 @@ For long final answers in webchat, DingTalk's bug-bounded streaming-card render 
 
 **Fix**
 
-Added **answer-card mode (`answerCard`, on by default)**: when the final answer exceeds `answerActToken` (default 600) tokens, the streaming card shows just "✅ Done thinking", and a separate **static answer card** carries the full reply. Short answers (≤ threshold) still finalize on the streaming card. Template id and threshold are configurable: `answerCardTemplateId` / `answerActToken`.
+Added **answer-card mode (`answerCard`, on by default)**: when the final answer exceeds `answerActToken` (default 500) tokens, the streaming card shows just "✅ Done thinking", and a separate **static answer card** carries the full reply. Short answers (≤ threshold) still finalize on the streaming card. Template id and threshold are configurable: `answerCardTemplateId` / `answerActToken`.
 
 **New Template**
 
@@ -81,7 +81,7 @@ Added **answer-card mode (`answerCard`, on by default)**: when the final answer 
 **New Config**
 
 - `channels.dingtalk-connector.answerCard` — answer-card mode toggle, default `true`; explicitly set `false` to disable
-- `channels.dingtalk-connector.answerActToken` — trigger threshold (tokens), default `600`
+- `channels.dingtalk-connector.answerActToken` — trigger threshold (tokens), default `500`
 - `channels.dingtalk-connector.answerCardTemplateId` — answer-card template id; falls back to the built-in default when unset
 
 **Files Changed**

@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.23</strong>（已发布到 npm，`latest` 指向此版本，包含全部历史 fix 修复 + 社区独有增强；使用方式见下方「安装」）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix22</strong>（已发布到 npm，`fix` 标签指向此版本，`latest` 仍为 0.8.21-fix20；修复版用 `@fix` 或显式版本）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -27,7 +27,7 @@
 |------|------|---------|
 | 2026-06-29 | 🐛 | **修复钉钉 AI 卡片流式回复不完整 例 “你...” 的问题** ：采用**延迟建卡**模式，让流式文本积累更多文本，把建卡时机放到真正的文本到来之后，再进行建卡流式卡片展示 |
 | 2026-06-29 | 🐛 | **修复 message 工具发卡 content 为空**：`finishAICard` 简化后直接 PUT FINISHED，对 reply-dispatcher 路径（已流式过）无影响，但 message 工具走的「新建卡立刻 finish」路径（`createAICardForTarget` → `finishAICard`，`inputingStarted=false`）会跳过 INPUTING 状态过渡，导致钉钉不渲染 content（卡片空白）。`finishAICard` 现仅在 `!inputingStarted` 时先调一次 `streamAICard(..., /*finished*/ false)` 走完 INPUTING + 内容写入再 FINISHED（`finished=false` 避免触发"假流式回放"，已流式过的路径 `inputingStarted=true` 完全不受影响）。**升级：** `npm install -g @jeik/dingtalk-connector@fix` |
-| 2026-06-29 | ✨ | **修复 webchat 中最终答案已生成，但由于钉钉上游流式卡片的原因导致长文本一直渲染的问题**：新增**答案卡模式（默认开启）**，钉钉回复默认会绑定一张流式卡片和答案卡片（默认内置），最终答案如果 token >  `answerActToken`（默认 600）时，原流式卡片直接显示"✅ 思考完成"、另投一张独立的**静态答案卡**，规避钉钉流式卡的官方固定速度渲染的 bug；短答案仍在原流式卡渲染。长文本新建答案卡快速回复，短文本回答不影响用户体验。模板id/阈值可配（`answerCardTemplateId` / `answerActToken`） |
+| 2026-06-29 | ✨ | **修复 webchat 中最终答案已生成，但由于钉钉上游流式卡片的原因导致长文本一直渲染的问题**：新增**答案卡模式（默认开启）**，钉钉回复默认会绑定一张流式卡片和答案卡片（默认内置），最终答案如果 token >  `answerActToken`（默认 500）时，原流式卡片直接显示"✅ 思考完成"、另投一张独立的**静态答案卡**，规避钉钉流式卡的官方固定速度渲染的 bug；短答案仍在原流式卡渲染。长文本新建答案卡快速回复，短文本回答不影响用户体验。模板id/阈值可配（`answerCardTemplateId` / `answerActToken`） |
 | 2026-06-29 | ✨ | **增加 AI 卡片工具流式展示工具调用进度**：增加调用工具时原卡流式显示 `🔧 正在调用工具：<工具名>`，结束后正常更新为回复 本功能补齐官方连接器未处理 tool 回调的短板|
 | 2026-06-29 | 🐛 | **修复多条文本回答、工具调用错误等异常情况导致 AI流式卡片提前停止渲染的问题，**：dws 等工具失败结果（带 `isError`/`isStatusNotice`）以前偶发被当最终答案、提前停渲染；现按 OpenClaw 官方标准排除，但原版官方 dingtalk-connector 并没有考虑这方面，本社区版已完美修复支持，仅展示不计入答案 |
 | 2026-06-29 | 🔧 | **安装向导对比官方超级增强**：安装向导支持**增强版AI card、已有配置跳过、扫码配置、填入clientID和clientSecret配置、dws 改为更新最新的 latest 版本、检测并可禁用遮蔽 npm 版的本地插件副本等**，安装向导更健壮 更易懂 更不会覆盖|
@@ -110,7 +110,7 @@
 | `cardProcessVar` | 中间过程（block 状态）变量名，不填默认使用 `cardContentVar` |
 | `cardToolVar` | 工具调用输出变量名，不填则不写入卡片 |
 | `answerCard` | 答案卡模式开关，**默认开启**；显式设 `false` 关闭 |
-| `answerActToken` | 答案卡触发阈值（token），默认 `600`；最终答案 ≤ 此值直接在原卡定稿，> 此值才另开答案卡 |
+| `answerActToken` | 答案卡触发阈值（token），默认 `500`；最终答案 ≤ 此值直接在原卡定稿，> 此值才另开答案卡 |
 | `answerCardTemplateId` | 答案卡模板 ID，不填用内置默认模板（需含 `content` 变量） |
 
 > 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建，并添加对应的变量字段。
@@ -125,7 +125,7 @@
   - 过程段逐字流式滚动；出现 `[-final-]` 后**停止流式、一次性定稿**（去掉钉钉"假流式回放"）。
   - 标记对用户**完全不可见**（进卡前统一剥离），且**优先级高于** OpenClaw 默认兜底——避免中间过程被误判成最终答案、提前停渲染。
   - 无标记时完全走 OpenClaw 默认逻辑。
-- **答案卡模式**（默认开启）：最终答案 token 超过 `answerActToken`（默认 600）时，**原流式卡定格"✅ 思考完成"**，另投一张**静态答案卡**承载完整回复——规避钉钉流式卡 FINISHED 后仍抖动/重渲染的 bug。短答案仍在原卡定稿，不多开卡。
+- **答案卡模式**（默认开启）：最终答案 token 超过 `answerActToken`（默认 500）时，**原流式卡定格"✅ 思考完成"**，另投一张**静态答案卡**承载完整回复——规避钉钉流式卡 FINISHED 后仍抖动/重渲染的 bug。短答案仍在原卡定稿，不多开卡。
 - **工具调用进度**：Agent 调用工具时，原卡流式显示 `🔧 正在调用工具：<工具名>`，工具结束后正常更新为回复。
 - **工具失败不再误判**：工具调用失败的结果（带 `isError`/`isStatusNotice`）只在卡片短暂展示，**不会被当成最终答案**。
 

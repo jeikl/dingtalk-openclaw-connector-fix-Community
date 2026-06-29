@@ -533,6 +533,13 @@ export async function finishAICard(
   log?: any,
   /** 写入内容变量名（默认 cardContentVar） */
   contentVar?: string,
+  /**
+   * 跳过「新建卡先走 INPUTING 再 FINISHED」的过渡。
+   * 仅用于：答案卡（answerCard 模式）新建的专用模板静态卡（不需要 INPUTING 过渡，
+   * 也不需要触发「假流式回放」保护——本来就该一次性 FINISHED）。
+   * 不要在其他场景使用，避免 message 工具的空内容 bug 复发。
+   */
+  skipInputingWalk?: boolean,
 ): Promise<void> {
   const varName = contentVar
     || (config?.cardContentVar as string)
@@ -562,7 +569,11 @@ export async function finishAICard(
   //   直接 PUT FINISHED 会导致钉钉侧不渲染 content 字段（卡片显示空白）。
   //   这种情况必须先调一次 streamAICard(card, content, /*finished*/ false) 走完 INPUTING + 内容写入，
   //   再 PUT FINISHED。finished=false 避免触发「假流式回放」（已流式过的路径不会再走到这里）。
-  if (!card.inputingStarted) {
+  //
+  //   答案卡（answerCard 模式）是新建的专用模板静态卡，不走流式、不需要 INPUTING 过渡、
+  //   也不需要触发「假流式回放」保护——本来就该一次性 FINISHED。
+  //   调用方显式传 skipInputingWalk=true 跳过此守卫。
+  if (!card.inputingStarted && !skipInputingWalk) {
     log?.info?.(
       `[DingTalk][AICard] 卡片从未流式（inputingStarted=false），先走 INPUTING + 内容写入再 FINISHED（修复 message 工具空内容 bug）`,
     );

@@ -529,9 +529,9 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           }
         };
 
-        // 答案卡模板（可配置 answerCardTemplateId，不填用硬编码默认）+ 触发阈值（answerActToken，默认600）
+        // 答案卡模板（可配置 answerCardTemplateId，不填用硬编码默认）+ 触发阈值（answerActToken，默认500）
         const answerTplId = ((account.config as any)?.answerCardTemplateId as string)?.trim() || ANSWER_CARD_TEMPLATE_ID;
-        const answerActToken = Number((account.config as any)?.answerActToken) || 600;
+        const answerActToken = Number((account.config as any)?.answerActToken) || 500;
         const answerTokens = estimateTokens(finalText);
 
         if (!hadRealAnswer) {
@@ -559,7 +559,9 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
             answerTplId,
           );
           if (answerCard) {
-            await finishAICard(answerCard, finalText, account.config as DingtalkConfig, log);
+            // 答案卡是新建的专用模板静态卡，不需要 INPUTING 过渡
+            // （走 INPUTING 会触发 500，因为内置答案卡模板字段不一定能接受流式 inputing）
+            await finishAICard(answerCard, finalText, account.config as DingtalkConfig, log, undefined, /*skipInputingWalk*/ true);
             log.info(`[DingTalk][closeStreaming] ✅ 答案卡投放成功`);
           } else {
             // 答案卡建失败 → 降级直接定稿原卡，保证用户能看到回复
