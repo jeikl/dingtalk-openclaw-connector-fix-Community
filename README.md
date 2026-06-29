@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21</strong>（已发布到 npm，使用方式见下方「安装」）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix20</strong>（已发布到 npm，使用方式见下方「安装」；`latest` 仍指向 v0.8.21，修复版用 `@fix` 或显式版本）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,6 +25,7 @@
 
 | 日期 | 标识 | 更新内容 |
 |------|------|---------|
+| 2026-06-29 | 🐛 | **修复 message 工具发卡 content 为空**：`finishAICard` 简化后直接 PUT FINISHED，对 reply-dispatcher 路径（已流式过）无影响，但 message 工具走的「新建卡立刻 finish」路径（`createAICardForTarget` → `finishAICard`，`inputingStarted=false`）会跳过 INPUTING 状态过渡，导致钉钉不渲染 content（卡片空白）。`finishAICard` 现仅在 `!inputingStarted` 时先调一次 `streamAICard(..., /*finished*/ false)` 走完 INPUTING + 内容写入再 FINISHED（`finished=false` 避免触发"假流式回放"，已流式过的路径 `inputingStarted=true` 完全不受影响）。**升级：** `npm install -g @jeik/dingtalk-connector@fix` |
 | 2026-06-29 | ✨ | **答案卡模式**（默认开启）：最终答案超过 `answerActToken`（默认 600）token 时，原流式卡定格"✅ 思考完成"、另投一张**静态答案卡**，规避钉钉流式卡 FINISHED 后仍抖动的官方 bug；短答案仍在原卡定稿。模板/阈值可配（`answerCardTemplateId` / `answerActToken`） |
 | 2026-06-29 | ✨ | **工具调用进度**：调用工具时原卡流式显示 `🔧 正在调用工具：<工具名>`，结束后正常更新为回复 |
 | 2026-06-29 | 🐛 | **修复工具调用失败被当最终答案**：dws 等工具失败结果（带 `isError`/`isStatusNotice`）以前偶发被当最终答案、提前停渲染；现按 OpenClaw 官方标准排除，仅展示不计入答案 |

@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21</strong> (now on npm — see "Installation" below).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix20</strong> (on npm — see "Installation" below; `latest` still points to v0.8.21, install fix builds with `@fix` or an explicit version).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,6 +25,7 @@
 
 | Date | Tag | Update |
 |------|------|--------|
+| 2026-06-29 | 🐛 | **Fixed message-tool cards rendering empty content**: `finishAICard` was simplified to PUT FINISHED directly. That works for the reply-dispatcher path (card already streamed, `inputingStarted=true`) but breaks the message-tool path (`createAICardForTarget` → `finishAICard` on a fresh card, `inputingStarted=false`) — skipping the INPUTING transition made DingTalk not render the `content` field (blank card). `finishAICard` now only triggers an extra `streamAICard(..., /*finished*/ false)` walk through INPUTING + content write when `!inputingStarted`; `finished=false` avoids "fake-stream replay" and the already-streamed path (`inputingStarted=true`) is unchanged. **Upgrade:** `npm install -g @jeik/dingtalk-connector@fix` |
 | 2026-06-29 | ✨ | **Answer-card mode** (on by default): when the final answer exceeds `answerActToken` (default 600) tokens, the streaming card finalizes to "✅ Done thinking" and the full reply is delivered on a separate **static answer card**, sidestepping DingTalk's official bug where a FINISHED streaming card keeps flickering; short answers stay on the original card. Template/threshold configurable (`answerCardTemplateId` / `answerActToken`) |
 | 2026-06-29 | ✨ | **Tool-call progress**: while a tool runs, the card streams `🔧 Calling tool: <name>`, then updates to the reply when done |
 | 2026-06-29 | 🐛 | **Fixed tool failures being treated as the final answer**: failed tool results (carrying `isError`/`isStatusNotice`, e.g. dws) were occasionally taken as the final answer and stopped rendering early; now excluded per OpenClaw's own rule — shown transiently, never counted as the answer |
