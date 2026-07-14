@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix30] - 2026-07-14
+
+生产稳定版 / Production-stable community release.
+
+### 修复 / Fixed
+- 🐛 **AI 卡流式过程半截 / 落后网关** — 串行写卡队列 + 尾随合并 + enqueue 序号；允许后帧盖前帧、允许内容变短；每一枪为完整 `isFull` 快照。  
+  **Mid-stream card truncation** — serial stream queue, trailing coalesce, sequence ids; later frames may overwrite earlier; each write is a full snapshot.
+- 🐛 **终态定格截断** — `pickFinalText` 取更长文本；小答案 `deliver(final)` force 刷卡；`finishAICard` 在已流式卡 FINISHED 前 stream 全量覆盖（重试 2 次）。  
+  **Final freeze half-cut** — smarter final text pick; force flush on small finals; stream-cover before FINISHED on already-streamed cards.
+- 🐛 **分发错误误报负载过高** — `No available channel for model … (distributor)` 映射为「暂无可用通道/线路」。  
+  **Distributor no-route misclassified as overload** — dedicated Chinese copy for no available channel.
+
+### 新增 / Added
+- ✨ **OpenClaw 对齐的模型错误中文映射** — 仅 `rawError` 非空时匹配；覆盖 billing / rate_limit / overloaded / auth / context 等。  
+  **OpenClaw-aligned Chinese model-error mapping** — only when `rawError` is set.
+- ✨ **首响文案** — 即时建卡 `🦸 正在召唤大模型…`。  
+  **First-paint ACK** — early card shows superhero summoning copy.
+- ✨ **纯工具打头占位** — 尚无模型正文时展示 `🤖 大模型已收到需求` + `🔧 正在调用：<工具>`（不进终稿）。  
+  **Tool-first placeholder** — fixed receipt line + tool line when no model text yet.
+
+### 保留 / Unchanged by design
+- ✅ **`answerActToken` 双卡** — token≤阈值原卡定稿；token>阈值原卡思考完成 + 静态答案卡；答案卡失败降级原卡。  
+  **Dual-card threshold** preserved (`answerCard` / `answerActToken` / `answerCardTemplateId`).
+
+### 其他 / Misc
+- 🧹 清理 coverage / 本地 env·claude 出库；完善 `.gitignore`。  
+  **Repo hygiene** — drop generated/local artifacts from git.
+- 📦 版本 `0.8.21-fix30`；建议 `openclaw plugins install @jeik/dingtalk-connector@fix --force` 后 `gateway restart`。
+
 ## [0.8.21] - 2026-06-28
 
 ### 新增 / Added

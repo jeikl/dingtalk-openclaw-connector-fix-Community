@@ -173,45 +173,66 @@
 
 ## 安装
 
-> 与官方插件同 channel id（`dingtalk-connector`），`--force` 直接覆盖更新，**无需先卸载**官方版或旧版。
+> 与官方插件同 channel id（`dingtalk-connector`），`--force` 直接覆盖更新，**无需先卸载**官方版或旧版。  
+> **当前稳定版：`0.8.21-fix30`**（`fix` dist-tag 指向此版本）。安装/更新后**必须** `openclaw gateway restart`。
 
 ### 方式一：npm（推荐）
 
-本版本已发布到 npm（`@jeik/dingtalk-connector`）。
+包名：[`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
-**一键扫码安装**（推荐，钉钉扫码完成：机器人创建 → 凭证获取 → 插件安装 → 配置写入）：
+**1）一键扫码安装**（推荐：创建机器人 → 取凭证 → 装插件 → 写配置）：
 
 ```bash
-npx -y @jeik/dingtalk-connector install
+# 新装
+npx -y @jeik/dingtalk-connector@0.8.21-fix30 install
+# 或始终跟 fix 通道
+npx -y @jeik/dingtalk-connector@fix install
 
-npx -y @jeik/dingtalk-connector --force ##强制安装 适用于本地已有 dingtalk-connector 的情况 第一条命令安装不了就用这个强制安装
+# 已有 dingtalk-connector / 装不上时强制覆盖
+npx -y @jeik/dingtalk-connector@fix --force
 ```
 
-**或仅安装插件**（自行配置凭证，见下方进阶文档）：
+**2）只装插件**（凭证已配好，或走手动配置文档）：
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector --force
-# 或
-npx openclaw@latest add @jeik/dingtalk-connector
+# 固定稳定版
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
+# 或跟 fix 通道（推荐日常升级）
+openclaw plugins install @jeik/dingtalk-connector@fix --force
 
 openclaw gateway restart
 ```
 
-### 方式二：本地构建产物（开发 / 离线）
+**3）从旧 fix 升级到 fix30：**
 
 ```bash
-# 1. 克隆仓库
-git clone https://ghfast.top/https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
+openclaw gateway restart
+```
+
+### 方式二：本地 tgz / 源码构建（开发、离线、预发验证）
+
+```bash
+git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
+git checkout v0.8.21-fix30   # 可选：钉死发布标签
 
-# 2. 安装依赖 & 构建 & 打包（npm 或 pnpm 任选）
-npm install && npm run build && npm pack       # → jeik-dingtalk-connector-0.8.21.tgz
-# pnpm install && pnpm run build && pnpm pack
+npm install && npm run build && npm pack
+# → jeik-dingtalk-connector-0.8.21-fix30.tgz
 
-# 3. 安装到 OpenClaw 并重启
-openclaw plugins install ./jeik-dingtalk-connector-0.8.21.tgz --force
-openclaw plugins install /mnt/e/my/dingtalk-openclaw-connector-fix-Community/jeik-dingtalk-connector-0.8.21-fix25.tgz --force
+openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force
 openclaw gateway restart
+```
+
+> 国内若 clone 慢，可用镜像前缀，例如：  
+> `git clone https://ghfast.top/https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git`
+
+### 安装后自检
+
+```bash
+openclaw -v                    # OpenClaw ≥ 2026.4.9
+openclaw plugins list          # 应看到 dingtalk-connector / @jeik/dingtalk-connector
+# 发一条钉钉消息：应先出现「🦸 正在召唤大模型…」，再进入流式回复
 ```
 
 ---

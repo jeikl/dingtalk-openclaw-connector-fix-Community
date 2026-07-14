@@ -133,42 +133,61 @@ Before you start, make sure you have:
 
 ## Installation
 
-> Same channel id as the official plugin (`dingtalk-connector`); `--force` overwrites in place, so **no need to uninstall** the official or an older version first.
+> Same channel id as the official plugin (`dingtalk-connector`); `--force` overwrites in place — **no uninstall** needed.  
+> **Current stable: `0.8.21-fix30`** (`fix` dist-tag). Always run `openclaw gateway restart` after install/upgrade.
 
 ### Option 1: npm (recommended)
 
-This build is published to npm (`@jeik/dingtalk-connector`).
+Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
-**One-command scan-to-install** (recommended — DingTalk QR scan handles: bot creation → credentials → plugin install → config write):
+**1) One-command QR install** (bot → credentials → plugin → config):
 
 ```bash
-npx -y @jeik/dingtalk-connector install
+npx -y @jeik/dingtalk-connector@0.8.21-fix30 install
+# or always follow the fix channel
+npx -y @jeik/dingtalk-connector@fix install
+
+# force overwrite when a local dingtalk-connector already exists
+npx -y @jeik/dingtalk-connector@fix --force
 ```
 
-**Or install the plugin only** (configure credentials yourself, see advanced docs below):
+**2) Plugin only** (credentials already set / manual setup):
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector --force
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
 # or
-npx openclaw@latest add @jeik/dingtalk-connector
+openclaw plugins install @jeik/dingtalk-connector@fix --force
 
 openclaw gateway restart
 ```
 
-### Option 2: Local build artifact (development / offline)
+**3) Upgrade from an older fix build:**
 
 ```bash
-# 1. Clone repo
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
+openclaw gateway restart
+```
+
+### Option 2: Local tgz / from source (dev / offline)
+
+```bash
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
+git checkout v0.8.21-fix30   # optional: pin the release tag
 
-# 2. Install, build & pack (npm or pnpm)
-npm install && npm run build && npm pack       # → jeik-dingtalk-connector-0.8.21.tgz
-# pnpm install && pnpm run build && pnpm pack
+npm install && npm run build && npm pack
+# → jeik-dingtalk-connector-0.8.21-fix30.tgz
 
-# 3. Install to OpenClaw and restart
-openclaw plugins install ./jeik-dingtalk-connector-0.8.21.tgz --force
+openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force
 openclaw gateway restart
+```
+
+### Smoke check
+
+```bash
+openclaw -v
+openclaw plugins list
+# Send a DingTalk message — you should first see "🦸 正在召唤大模型…" then streaming reply
 ```
 
 ---
