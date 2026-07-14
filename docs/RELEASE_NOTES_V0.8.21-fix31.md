@@ -5,16 +5,15 @@
 ## 安装 / Install
 
 ```bash
-# 推荐：fix 通道（指向 0.8.21-fix31）
-openclaw plugins install @jeik/dingtalk-connector@fix --force
-openclaw gateway restart
+# 一键扫码安装（推荐，走 npm latest）
+npx -y @jeik/dingtalk-connector install
 
-# 或钉死版本
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
-openclaw gateway restart
+# 强制覆盖
+npx -y @jeik/dingtalk-connector --force
 
-# 一键扫码
-npx -y @jeik/dingtalk-connector@fix install
+# 仅装插件
+openclaw plugins install @jeik/dingtalk-connector --force
+openclaw gateway restart
 ```
 
 本地 tgz：

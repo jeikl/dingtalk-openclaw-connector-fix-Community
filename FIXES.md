@@ -100,12 +100,11 @@
 **安装**：
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
+npx -y @jeik/dingtalk-connector install
 # 或
-openclaw plugins install @jeik/dingtalk-connector@fix --force
+openclaw plugins install @jeik/dingtalk-connector --force
 openclaw gateway restart
 ```
-
 ---
 
 ## v0.8.21-fix22（2026-06-29）

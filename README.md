@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix31</strong>（稳定生产可用；安装：`npm i -g @jeik/dingtalk-connector@0.8.21-fix31` 或 `@fix`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix31</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -172,7 +172,7 @@
 ## 安装
 
 > 与官方插件同 channel id（`dingtalk-connector`），`--force` 直接覆盖更新，**无需先卸载**官方版或旧版。  
-> **当前稳定版：`0.8.21-fix31`**（`fix` dist-tag 指向此版本）。安装/更新后**必须** `openclaw gateway restart`。
+> **当前稳定版：`0.8.21-fix31`**（npm `latest` 已指向本版）。安装/更新后**必须** `openclaw gateway restart`。
 
 ### 方式一：npm（推荐）
 
@@ -181,30 +181,23 @@
 **1）一键扫码安装**（推荐：创建机器人 → 取凭证 → 装插件 → 写配置）：
 
 ```bash
-# 新装
-npx -y @jeik/dingtalk-connector@0.8.21-fix31 install
-# 或始终跟 fix 通道
-npx -y @jeik/dingtalk-connector@fix install
+npx -y @jeik/dingtalk-connector install
 
 # 已有 dingtalk-connector / 装不上时强制覆盖
-npx -y @jeik/dingtalk-connector@fix --force
+npx -y @jeik/dingtalk-connector --force
 ```
 
 **2）只装插件**（凭证已配好，或走手动配置文档）：
 
 ```bash
-# 固定稳定版
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
-# 或跟 fix 通道（推荐日常升级）
-openclaw plugins install @jeik/dingtalk-connector@fix --force
-
+openclaw plugins install @jeik/dingtalk-connector --force
 openclaw gateway restart
 ```
 
-**3）从旧 fix 升级到 fix31：**
+**3）升级到最新版：**
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
+openclaw plugins install @jeik/dingtalk-connector --force
 openclaw gateway restart
 ```
 

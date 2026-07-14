@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix31</strong> (production-stable; install: `npm i -g @jeik/dingtalk-connector@0.8.21-fix31` or `@fix`).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix31</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -132,7 +132,7 @@ Before you start, make sure you have:
 ## Installation
 
 > Same channel id as the official plugin (`dingtalk-connector`); `--force` overwrites in place — **no uninstall** needed.  
-> **Current stable: `0.8.21-fix31`** (`fix` dist-tag). Always run `openclaw gateway restart` after install/upgrade.
+> **Current stable: `0.8.21-fix31`** (npm `latest`). Always run `openclaw gateway restart` after install/upgrade.
 
 ### Option 1: npm (recommended)
 
@@ -141,28 +141,23 @@ Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingta
 **1) One-command QR install** (bot → credentials → plugin → config):
 
 ```bash
-npx -y @jeik/dingtalk-connector@0.8.21-fix31 install
-# or always follow the fix channel
-npx -y @jeik/dingtalk-connector@fix install
+npx -y @jeik/dingtalk-connector install
 
 # force overwrite when a local dingtalk-connector already exists
-npx -y @jeik/dingtalk-connector@fix --force
+npx -y @jeik/dingtalk-connector --force
 ```
 
 **2) Plugin only** (credentials already set / manual setup):
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
-# or
-openclaw plugins install @jeik/dingtalk-connector@fix --force
-
+openclaw plugins install @jeik/dingtalk-connector --force
 openclaw gateway restart
 ```
 
-**3) Upgrade from an older fix build:**
+**3) Upgrade to latest:**
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
+openclaw plugins install @jeik/dingtalk-connector --force
 openclaw gateway restart
 ```
 

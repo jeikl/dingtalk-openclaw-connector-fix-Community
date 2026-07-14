@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 其他 / Misc
 - 🧹 清理 coverage / 本地 env·claude 出库；完善 `.gitignore`。  
   **Repo hygiene** — drop generated/local artifacts from git.
-- 📦 版本 `0.8.21-fix31`；`openclaw plugins install @jeik/dingtalk-connector@fix --force` 后 `gateway restart`。
+- 📦 版本 `0.8.21-fix31`（npm `latest`）；`npx -y @jeik/dingtalk-connector install` 或 `openclaw plugins install @jeik/dingtalk-connector --force` 后 `gateway restart`。
 
 ## [0.8.21] - 2026-06-28
 
