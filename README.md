@@ -206,7 +206,8 @@ openclaw gateway restart
 ```bash
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
-git checkout v0.8.21-fix31   # 可选：钉死发布标签
+# 可选：钉到某次发布（这是 git tag，不是分支；clone 后可直接 checkout）
+# git fetch --tags && git checkout v0.8.21-fix31
 
 npm install && npm run build && npm pack
 # → jeik-dingtalk-connector-0.8.21-fix31.tgz
