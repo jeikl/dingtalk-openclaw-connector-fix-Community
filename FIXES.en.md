@@ -5,7 +5,7 @@ This file documents all bug fixes in the community maintained version relative t
 
 ---
 
-## v0.8.21-fix30 (2026-07-14) — production-stable
+## v0.8.21-fix31 (2026-07-14) — production-stable
 
 Convergence release for **mid-stream integrity**, **final-state integrity**, **readable model errors**, and **first-paint UX**. The `answerActToken` dual-card design is fully preserved.
 

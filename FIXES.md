@@ -5,7 +5,7 @@
 
 ---
 
-## v0.8.21-fix30（2026-07-14）— 生产稳定版
+## v0.8.21-fix31（2026-07-14）— 生产稳定版
 
 面向日常钉钉对话的**流式完整性 / 终态完整性 / 错误可读性 / 首响体验**一次收敛。`answerActToken` 双卡机制完整保留。
 
@@ -100,7 +100,7 @@
 **安装**：
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
 # 或
 openclaw plugins install @jeik/dingtalk-connector@fix --force
 openclaw gateway restart

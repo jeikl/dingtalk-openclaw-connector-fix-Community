@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix30</strong>（稳定生产可用；安装：`npm i -g @jeik/dingtalk-connector@0.8.21-fix30` 或 `@fix`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix31</strong>（稳定生产可用；安装：`npm i -g @jeik/dingtalk-connector@0.8.21-fix31` 或 `@fix`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,7 +25,7 @@
 
 | 日期 | 标识 | 更新内容 |
 |------|------|---------|
-| 2026-07-14 | 🚀 | **v0.8.21-fix30 稳定版**：① 流式串行队列+尾随合并（过程/终态不再半截）；② `answerActToken` 双卡保留；③ OpenClaw 对齐错误中文映射；④ ACK「🦸 正在召唤大模型…」+ 纯工具打头「🤖 大模型已收到需求」；⑤ **安装向导**：accountId 由 clientId 推导（不再写死 apibot）、同 agent 不重复 bindings；⑥ **移除** `cardToolVar`/`cardProcessVar` 配置（工具进度统一写入 `cardContentVar`）；⑦ 仓库清理 |
+| 2026-07-14 | 🚀 | **v0.8.21-fix31 稳定版**：① 流式串行队列+尾随合并（过程/终态不再半截）；② `answerActToken` 双卡保留；③ OpenClaw 对齐错误中文映射；④ ACK「🦸 正在召唤大模型…」+ 纯工具打头「🤖 大模型已收到需求」；⑤ **安装向导**：accountId 由 clientId 推导（不再写死 apibot）、同 agent 不重复 bindings；⑥ **移除** `cardToolVar`/`cardProcessVar` 配置（工具进度统一写入 `cardContentVar`）；⑦ 仓库清理 |
 | 2026-06-29 | 🐛 | **修复答案卡路径触发 500**：`finishAICard` 新增 `skipInputingWalk` 参数；答案卡（`answerCard` 模式）路径是新建的专用模板静态卡，不应走 INPUTING 过渡——内置答案卡模板字段与原流式卡可能不兼容，`streamAICard` INPUTING 切换时钉钉返回 500。答案卡调用时显式传 `skipInputingWalk=true` 直接 PUT FINISHED；message 工具路径仍走 `!inputingStarted` 守卫保留空内容修复。 |
 | 2026-06-29 | 🔧 | **答案卡触发阈值默认 600 → 500**：多数中文 LLM 实际回复（500-700 字）跨过原 600 阈值更频繁，改默认值减少"两张卡"体验。已有用户配置不动。 |
 | 2026-06-29 | 🐛 | **修复钉钉 AI 卡片流式回复不完整 例 “你...” 的问题** ：采用**延迟建卡**模式，让流式文本积累更多文本，把建卡时机放到真正的文本到来之后，再进行建卡流式卡片展示 |
@@ -172,7 +172,7 @@
 ## 安装
 
 > 与官方插件同 channel id（`dingtalk-connector`），`--force` 直接覆盖更新，**无需先卸载**官方版或旧版。  
-> **当前稳定版：`0.8.21-fix30`**（`fix` dist-tag 指向此版本）。安装/更新后**必须** `openclaw gateway restart`。
+> **当前稳定版：`0.8.21-fix31`**（`fix` dist-tag 指向此版本）。安装/更新后**必须** `openclaw gateway restart`。
 
 ### 方式一：npm（推荐）
 
@@ -182,7 +182,7 @@
 
 ```bash
 # 新装
-npx -y @jeik/dingtalk-connector@0.8.21-fix30 install
+npx -y @jeik/dingtalk-connector@0.8.21-fix31 install
 # 或始终跟 fix 通道
 npx -y @jeik/dingtalk-connector@fix install
 
@@ -194,17 +194,17 @@ npx -y @jeik/dingtalk-connector@fix --force
 
 ```bash
 # 固定稳定版
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
 # 或跟 fix 通道（推荐日常升级）
 openclaw plugins install @jeik/dingtalk-connector@fix --force
 
 openclaw gateway restart
 ```
 
-**3）从旧 fix 升级到 fix30：**
+**3）从旧 fix 升级到 fix31：**
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
 openclaw gateway restart
 ```
 
@@ -213,12 +213,12 @@ openclaw gateway restart
 ```bash
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
-git checkout v0.8.21-fix30   # 可选：钉死发布标签
+git checkout v0.8.21-fix31   # 可选：钉死发布标签
 
 npm install && npm run build && npm pack
-# → jeik-dingtalk-connector-0.8.21-fix30.tgz
+# → jeik-dingtalk-connector-0.8.21-fix31.tgz
 
-openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force
+openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force
 openclaw gateway restart
 ```
 

@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.21-fix30] - 2026-07-14
+## [0.8.21-fix31] - 2026-07-14
 
 生产稳定版 / Production-stable community release.
 
@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 其他 / Misc
 - 🧹 清理 coverage / 本地 env·claude 出库；完善 `.gitignore`。  
   **Repo hygiene** — drop generated/local artifacts from git.
-- 📦 版本 `0.8.21-fix30`；`openclaw plugins install @jeik/dingtalk-connector@fix --force` 后 `gateway restart`。
+- 📦 版本 `0.8.21-fix31`；`openclaw plugins install @jeik/dingtalk-connector@fix --force` 后 `gateway restart`。
 
 ## [0.8.21] - 2026-06-28
 

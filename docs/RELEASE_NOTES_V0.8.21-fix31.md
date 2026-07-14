@@ -1,16 +1,16 @@
-# Release Notes — v0.8.21-fix30（2026-07-14）
+# Release Notes — v0.8.21-fix31（2026-07-14）
 
 生产稳定版 / Production-stable community build of `@jeik/dingtalk-connector`.
 
 ## 安装 / Install
 
 ```bash
-# 推荐：fix 通道（指向 0.8.21-fix30）
+# 推荐：fix 通道（指向 0.8.21-fix31）
 openclaw plugins install @jeik/dingtalk-connector@fix --force
 openclaw gateway restart
 
 # 或钉死版本
-openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix31 --force
 openclaw gateway restart
 
 # 一键扫码
@@ -21,7 +21,7 @@ npx -y @jeik/dingtalk-connector@fix install
 
 ```bash
 npm install && npm run build && npm pack
-openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force
+openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force
 openclaw gateway restart
 ```
 
