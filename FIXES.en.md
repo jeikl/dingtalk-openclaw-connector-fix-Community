@@ -5,6 +5,40 @@ This file documents all bug fixes in the community maintained version relative t
 
 ---
 
+## v0.8.21-fix30 (2026-07-14) — production-stable
+
+Convergence release for **mid-stream integrity**, **final-state integrity**, **readable model errors**, and **first-paint UX**. The `answerActToken` dual-card design is fully preserved.
+
+### Streaming mid-flight truncation / lag vs gateway
+
+Serial write queue + trailing coalesce (latest full snapshot); enqueue sequence to avoid races; **length-must-grow filter removed** (shorter frames can be legitimate). Later frames may overwrite earlier ones promptly; each fired write is a complete `isFull` snapshot.
+
+### Final freeze still half-cut
+
+Smarter `pickFinalText` (prefer longer/current); small answers force-flush on `deliver(final)`; large answers skip forcing full text onto the streaming card (answer-card path); `closeStreaming` drains queue then flushes; `finishAICard` stream-covers full text before FINISHED when the card already streamed (`skipInputingWalk` still for static answer cards).
+
+### answerActToken dual-card (unchanged intent)
+
+| Condition | Behavior |
+|-----------|----------|
+| tokens ≤ threshold (default 500) | Finalize on streaming card only |
+| tokens > threshold | Streaming card → "✅ 思考完成", new static answer card with full text |
+| answer-card create fails | Fallback: finalize full text on original card |
+
+### OpenClaw-aligned Chinese error mapping
+
+Match only when `rawError` is non-empty; OpenClaw user-facing strings + FailoverReason semantics; distributor `No available channel for model` → no-route copy (not "overloaded").
+
+### First-paint & tool-first UX
+
+ACK: `🦸 正在召唤大模型…`. Tool-first (no model text yet): `🤖 大模型已收到需求` + `🔧 正在调用：name` (display-only placeholder).
+
+### Repo hygiene
+
+Ignore/remove coverage, local `.env.test`, `.claude` local settings, etc.
+
+---
+
 ## v0.8.21-fix22 (2026-06-29)
 
 ### 🐛 Fixed answer-card path triggering 500 (new card INPUTING transition hit template field incompatibility)

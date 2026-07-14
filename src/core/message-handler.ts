@@ -52,7 +52,7 @@ import {
   uploadAndReplaceFileMarkers
 } from "../services/media/index.ts";
 import { sendProactive, type AICardTarget } from "../services/messaging/index.ts";
-import { createAICardForTarget, streamAICard, type AICardInstance } from "../services/messaging/card.ts";
+import { createAICardForTarget, streamAICard, registerActiveCard, type AICardInstance } from "../services/messaging/card.ts";
 import { QUEUE_BUSY_ACK_PHRASES } from "../utils/constants.ts";
 import { createDingtalkReplyDispatcher } from "../reply-dispatcher.ts";
 import { normalizeSlashCommand } from "../utils/session.ts";
@@ -1460,6 +1460,33 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
       BotChatbotCorpId: data.chatbotCorpId,
     } as any);
 
+    // ===== 即时建卡：收到消息后立即创建 AI Card，显示"正在调用大模型" =====
+    // 避免用户发消息后长时间无视觉反馈（等到第一个 token 才建卡）。
+    // 如果队列繁忙时已创建了 preCreatedCard，则直接复用，不重复建卡。
+    const groupReplyModeForCard = config.groupReplyMode || 'aicard';
+    const skipAICardForCard = !isDirect && (groupReplyModeForCard === 'text' || groupReplyModeForCard === 'markdown');
+    const streamingEnabledForCard = !skipAICardForCard && (config as any).streaming !== false;
+
+    let earlyCard: AICardInstance | undefined = params.preCreatedCard;
+    if (!earlyCard && streamingEnabledForCard && !asyncMode) {
+      try {
+        const earlyTarget: AICardTarget = isDirect
+          ? { type: 'user', userId: senderId }
+          : { type: 'group', openConversationId: data.conversationId };
+        earlyCard = await createAICardForTarget(config, earlyTarget, log);
+        if (earlyCard) {
+          await streamAICard(earlyCard, '🦸 正在召唤大模型…', false, config, log);
+          if (!isDirect) {
+            registerActiveCard(data.conversationId, earlyCard);
+          }
+          log.info('[DingTalk][earlyCard] ✅ 即时建卡成功');
+        }
+      } catch (e: any) {
+        log.warn(`[DingTalk][earlyCard] 即时建卡失败（降级延迟建卡）：${e?.message}`);
+        earlyCard = undefined;
+      }
+    }
+
     // 创建 reply dispatcher，使用解析后的 agentId
     const { dispatcher, replyOptions, markDispatchIdle, getAsyncModeResponse } = createDingtalkReplyDispatcher({
       cfg,
@@ -1472,7 +1499,7 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
       messageCreateTimeMs: Date.now(),
       sessionWebhook: data.sessionWebhook,
       asyncMode,
-      preCreatedCard: params.preCreatedCard,
+      preCreatedCard: earlyCard,
     });
 
     // ===== 注入当前 bot 的 clientId（用于 dws CLI --client-id 参数） =====

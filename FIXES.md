@@ -5,6 +5,85 @@
 
 ---
 
+## v0.8.21-fix30（2026-07-14）— 生产稳定版
+
+面向日常钉钉对话的**流式完整性 / 终态完整性 / 错误可读性 / 首响体验**一次收敛。`answerActToken` 双卡机制完整保留。
+
+### 🐛 流式过程中卡片半截、落后网关（过程态）
+
+**问题**：网关侧全文完整，钉钉 AI 卡偶发停在「好的 我…」等中间态；卡未关闭时后续还能继续刷，属过程干扰而非模型少生成。
+
+**根因**：800ms 硬丢更新；并发 `streamAICard` 乱序；曾用「禁止内容变短」误伤合法短帧。
+
+**修复**（`src/reply-dispatcher.ts`）：
+
+- 串行写卡队列 + 尾随合并：窗口内合并，到期必刷**最新全文快照**
+- 执行时读 `latestCardContent` + enqueue 序号，防乱序；**允许内容变短**（final 短于 process、思考完成等）
+- 允许后面及时盖前面；每一枪发出的是完整 `isFull` 快照
+
+### 🐛 终态定格截断（卡关闭后仍半截）
+
+**问题**：定格后只剩前半段，后半段在网关可见、钉钉不可见。
+
+**根因**：
+
+1. `pickFinalText` 用 `lastAnswerText || accumulatedText`，中间 block 可能更短却被选用  
+2. `deliver(final)` 只改内存不刷卡，全押 `onIdle`  
+3. 已流式卡上直接 PUT FINISHED，钉钉客户端常不刷新可见内容  
+
+**修复**：
+
+- `pickFinalText`：取更长/更新的文本  
+- 小答案 `deliver(final)` force 刷全文；大答案（将走答案卡）只更新内存，避免长文在原卡慢渲染  
+- `closeStreaming`：先排空队列 → flush 终稿 → `finishAICard`  
+- `finishAICard`（`src/services/messaging/card.ts`）：`inputingStarted` 时 FINISHED **前** stream 全量覆盖（最多 2 次），`skipInputingWalk` 仍专供静态答案卡  
+
+### ✅ 保留：answerActToken 双卡机制（请勿破坏）
+
+| 条件 | 行为 |
+|------|------|
+| `answerTokens ≤ answerActToken`（默认 500） | 原流式卡定稿全文（日常短聊单卡） |
+| `answerTokens > answerActToken` | 原卡「✅ 思考完成」+ **新建静态答案卡**一次投全文（长文快速可读） |
+| 答案卡创建失败 | 降级原卡定稿全文 |
+
+### ✨ 上游错误中文提示（对齐 OpenClaw）
+
+- 仅当 `payload.rawError` 非空时匹配（正常回复不误伤）  
+- 优先 OpenClaw 固定用户文案 + `FailoverReason` 语义（`failover-matches`）  
+- 分发网关：`No available channel for model … (distributor)` → **暂无可用通道/线路**（不再误报负载过高）  
+- rate limit / billing / auth / context / overloaded 等分类文案  
+
+### ✨ 首响与纯工具打头体验
+
+- 即时建卡 ACK：`🦸 正在召唤大模型…`（`message-handler` earlyCard）  
+- 首次即为工具、尚无模型正文：展示  
+
+```text
+🤖 大模型已收到需求
+
+🔧 正在调用：<工具名>
+```
+
+  占位仅展示、不进 `accumulatedText`，不影响终稿；有真实流式正文后自动切换  
+
+### 🧹 仓库卫生
+
+- `.gitignore`：coverage、.env.*、.claude、.codegraph、logs 等  
+- 移除误跟踪的 coverage / `.env.test` / 本地 `.claude` 配置  
+
+**涉及文件**：`src/reply-dispatcher.ts`、`src/services/messaging/card.ts`、`src/core/message-handler.ts`、`.gitignore`、文档版本号  
+
+**安装**：
+
+```bash
+npm i -g @jeik/dingtalk-connector@0.8.21-fix30
+# 或
+openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force
+openclaw gateway restart
+```
+
+---
+
 ## v0.8.21-fix22（2026-06-29）
 
 ### 🐛 修复答案卡路径触发 500（新建卡片走 INPUTING 过渡踩模板字段不兼容）

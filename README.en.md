@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix22</strong> (on npm; `fix` tag points to this version — install fix builds with `@fix` or an explicit version).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix30</strong> (production-stable; install: `npm i -g @jeik/dingtalk-connector@0.8.21-fix30` or `@fix`).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,6 +25,7 @@
 
 | Date | Tag | Update |
 |------|------|--------|
+| 2026-07-14 | 🚀 | **v0.8.21-fix30 stable**: (1) serial AI-card stream queue + trailing coalesce (no mid-stream truncation / short-over-long races); (2) final flush + pre-FINISHED full stream cover; (3) keeps `answerActToken` dual-card mode; (4) OpenClaw-aligned error Chinese mapping (incl. distributor "no available channel"); (5) ACK "🦸 正在召唤大模型…"; (6) tool-first placeholder "🤖 大模型已收到需求" + tool line; (7) drop coverage/local junk from git |
 | 2026-06-29 | 🐛 | **Fixed answer-card path triggering 500**: `finishAICard` gained a `skipInputingWalk` parameter. The answer-card path (`answerCard` mode) creates a new dedicated static-template card and shouldn't walk through INPUTING — the built-in answer-card template's fields may be incompatible with the streaming template, so `streamAICard`'s INPUTING transition returned 500. Answer-card calls now pass `skipInputingWalk=true` and PUT FINISHED directly; the message-tool path still walks through the `!inputingStarted` guard to preserve the empty-content fix. |
 | 2026-06-29 | 🔧 | **Answer-card threshold default 600 → 500**: most Chinese LLM replies (500-700 chars) routinely crossed the old 600 threshold, so users saw "two cards" too often. Lowered default to reduce that experience. Existing user configs untouched. |
 | 2026-06-29 | 🐛 | **Fixed incomplete DingTalk AI Card streaming replies (e.g. "你...")**: switched to **deferred card creation** — accumulate streaming text first, only create the AI Card once the real reply tokens actually start arriving, eliminating the half-empty "你..." card |

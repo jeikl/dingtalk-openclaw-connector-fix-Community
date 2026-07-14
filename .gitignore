@@ -1,23 +1,64 @@
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
-.venv/
-.env
-*.egg
+# Dependencies
 node_modules/
 package-lock.json
-coverage/
+
+# Build outputs
+dist/
+build/
+*.egg
+*.egg-info/
 *.tgz
+*.tsbuildinfo
+
+# Python / venv
+__pycache__/
+*.py[cod]
+.venv/
+
+# Environment & secrets (keep committed examples only)
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.test.example
+
+# Test / coverage artifacts
+coverage/
+.nyc_output/
+
+# Logs
 logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# IDE
-.idea/
-
-openclaw/
-.aone_copilot/
-AGENTS.md
+# OS
 .DS_Store
+Thumbs.db
+
+# IDE / editor local state
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
+
+# Agent / AI local tooling
+.claude/
+.aone_copilot/
+.qoder/
+.codex/
+AGENTS.md
+CLAUDE.md
 plans/
 scripts/
+
+# Local clones / scratch
+openclaw/
+官方/
+
+# Code intelligence (machine-local index)
+.codegraph/

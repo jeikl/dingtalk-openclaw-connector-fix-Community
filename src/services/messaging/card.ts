@@ -560,29 +560,53 @@ export async function finishAICard(
     `[DingTalk][AICard] 开始 finish（一次性定稿，无流式回放），最终内容长度=${fixedContent.length}`,
   );
 
-  // 处理「新建卡片直接 finish」的渲染空内容 bug：
-  //   钉钉 AI Card 的合法状态机是 PROCESSING → INPUTING → FINISHED。
-  //   reply-dispatcher 路径（onPartialReply → streamAICard）已经走过了 INPUTING，
-  //   finishAICard 时 inputingStarted=true，直接 PUT FINISHED 即可（无假流式回放）。
-  //   但 message 工具走的 sendProactiveInternal 路径是「createAICardForTarget 后立刻 finishAICard」，
-  //   新建卡片的 inputingStarted=false，从未经过 INPUTING 状态过渡，
-  //   直接 PUT FINISHED 会导致钉钉侧不渲染 content 字段（卡片显示空白）。
-  //   这种情况必须先调一次 streamAICard(card, content, /*finished*/ false) 走完 INPUTING + 内容写入，
-  //   再 PUT FINISHED。finished=false 避免触发「假流式回放」（已流式过的路径不会再走到这里）。
+  // 钉钉 AI Card 状态机：PROCESSING → INPUTING → FINISHED。
   //
-  //   答案卡（answerCard 模式）是新建的专用模板静态卡，不走流式、不需要 INPUTING 过渡、
-  //   也不需要触发「假流式回放」保护——本来就该一次性 FINISHED。
-  //   调用方显式传 skipInputingWalk=true 跳过此守卫。
-  if (!card.inputingStarted && !skipInputingWalk) {
-    log?.info?.(
-      `[DingTalk][AICard] 卡片从未流式（inputingStarted=false），先走 INPUTING + 内容写入再 FINISHED（修复 message 工具空内容 bug）`,
-    );
-    await streamAICard(card, fixedContent, /*finished*/ false, config, log, contentVar);
+  // 1) 从未流式（inputingStarted=false，如 message 工具新建卡立刻 finish）：
+  //    必须先 streamAICard 走完 INPUTING + 写入全文，否则 FINISHED 可能空白。
+  // 2) 已经流式过（inputingStarted=true）：
+  //    客户端常不刷新 FINISHED 里的全文，卡面停在「最后一次 stream 的中间态」。
+  //    定稿前必须用 streaming 端点再全量覆盖一次全文（finished=false，避免假打字回放），
+  //    再 PUT FINISHED。
+  // 3) skipInputingWalk=true（答案专用静态卡）：跳过覆盖，直接 FINISHED。
+  if (!skipInputingWalk) {
+    if (!card.inputingStarted) {
+      log?.info?.(
+        `[DingTalk][AICard] 卡片从未流式（inputingStarted=false），先走 INPUTING + 全文写入再 FINISHED`,
+      );
+    } else {
+      log?.info?.(
+        `[DingTalk][AICard] 卡片已流式过，FINISHED 前先用 streaming 全量覆盖终稿（len=${fixedContent.length}），修复终态截断`,
+      );
+    }
+    // 最多重试 2 次：定稿覆盖失败会直接导致用户看到中间截断文案
+    let coverOk = false;
+    let lastCoverErr: unknown;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await streamAICard(card, fixedContent, /*finished*/ false, config, log, contentVar);
+        coverOk = true;
+        break;
+      } catch (err: any) {
+        lastCoverErr = err;
+        log?.warn?.(
+          `[DingTalk][AICard] 定稿前 stream 覆盖失败（第 ${attempt} 次）：${err?.message || err}`,
+        );
+        if (isQpsLimitError(err)) {
+          cardRateLimiter.triggerBackoff();
+          await cardRateLimiter.waitForToken();
+        }
+      }
+    }
+    if (!coverOk) {
+      log?.error?.(
+        `[DingTalk][AICard] 定稿前 stream 覆盖仍失败，继续 FINISHED 并向上抛出以便降级：${(lastCoverErr as any)?.message || lastCoverErr}`,
+      );
+      // 仍尝试 FINISHED；调用方 closeStreaming 若再失败会走普通消息降级
+    }
   }
 
-  // 最终答案一次性定稿：直接 PUT /card/instances 设 FINISHED + 完整内容。
-  // 不再先 streamAICard(isFinalize=true) —— 那会让钉钉把已完成的最终答案重新打字回放一遍（假流式）。
-  // FINISHED 经 /card/instances 是全量更新，自带完整内容，无需先进 INPUTING。
+  // PUT /card/instances → FINISHED + 完整内容（状态收尾；可见内容已尽量由上面 stream 覆盖）
   const body = {
     outTrackId: card.cardInstanceId,
     cardData: {

@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix22</strong>（已发布到 npm，`fix` 标签指向此版本，`latest` 仍为 0.8.21-fix20；修复版用 `@fix` 或显式版本）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix30</strong>（稳定生产可用；安装：`npm i -g @jeik/dingtalk-connector@0.8.21-fix30` 或 `@fix`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,6 +25,7 @@
 
 | 日期 | 标识 | 更新内容 |
 |------|------|---------|
+| 2026-07-14 | 🚀 | **v0.8.21-fix30 稳定版**：① AI 卡流式串行队列+尾随合并，过程中不再半截/乱序短盖长；② 终态强制 flush+FINISHED 前 stream 全量覆盖，杜绝定格截断；③ 保留 `answerActToken` 双卡机制（短单卡/长短文新卡）；④ OpenClaw 对齐错误中文映射（含 `No available channel` 分发无线路）；⑤ 即时 ACK「🦸 正在召唤大模型…」；⑥ 纯工具打头展示「🤖 大模型已收到需求」+ 工具行；⑦ 清理 coverage/本地配置出库、完善 .gitignore |
 | 2026-06-29 | 🐛 | **修复答案卡路径触发 500**：`finishAICard` 新增 `skipInputingWalk` 参数；答案卡（`answerCard` 模式）路径是新建的专用模板静态卡，不应走 INPUTING 过渡——内置答案卡模板字段与原流式卡可能不兼容，`streamAICard` INPUTING 切换时钉钉返回 500。答案卡调用时显式传 `skipInputingWalk=true` 直接 PUT FINISHED；message 工具路径仍走 `!inputingStarted` 守卫保留空内容修复。 |
 | 2026-06-29 | 🔧 | **答案卡触发阈值默认 600 → 500**：多数中文 LLM 实际回复（500-700 字）跨过原 600 阈值更频繁，改默认值减少"两张卡"体验。已有用户配置不动。 |
 | 2026-06-29 | 🐛 | **修复钉钉 AI 卡片流式回复不完整 例 “你...” 的问题** ：采用**延迟建卡**模式，让流式文本积累更多文本，把建卡时机放到真正的文本到来之后，再进行建卡流式卡片展示 |
@@ -209,6 +210,7 @@ npm install && npm run build && npm pack       # → jeik-dingtalk-connector-0.8
 
 # 3. 安装到 OpenClaw 并重启
 openclaw plugins install ./jeik-dingtalk-connector-0.8.21.tgz --force
+openclaw plugins install /mnt/e/my/dingtalk-openclaw-connector-fix-Community/jeik-dingtalk-connector-0.8.21-fix25.tgz --force
 openclaw gateway restart
 ```
 
