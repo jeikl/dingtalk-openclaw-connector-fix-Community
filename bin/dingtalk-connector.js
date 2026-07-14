@@ -251,18 +251,12 @@ function saveCredentials(clientId, clientSecret, { isLocal = false, pluginInstal
       return { skippedMultiAgent: true };
     }
 
-    // ── channels.[CHANNEL_ID] ──
-    if (!cfg.channels) cfg.channels = {};
-    if (!cfg.channels[CHANNEL_ID]) cfg.channels[CHANNEL_ID] = {};
-    cfg.channels[CHANNEL_ID].enabled = true;
-    cfg.channels[CHANNEL_ID].clientId = clientId;
-    cfg.channels[CHANNEL_ID].clientSecret = clientSecret;
-
-    // ── plugins.entries ──
-    if (!cfg.plugins) cfg.plugins = {};
-    if (!cfg.plugins.entries) cfg.plugins.entries = {};
-    if (!cfg.plugins.entries[CHANNEL_ID]) cfg.plugins.entries[CHANNEL_ID] = {};
-    cfg.plugins.entries[CHANNEL_ID].enabled = true;
+    // ── channels + bindings（accounts 结构；accountId 由 clientId 推导，同 agent 不重复 binding）──
+    addBotAccount(cfg, CHANNEL_ID, {
+      clientId,
+      clientSecret,
+      agentId: "main",
+    });
 
     // Clean up staging file since credentials are now in the real config
     clearStaging();
@@ -890,23 +884,24 @@ Options:
           '是否覆盖? (overwrite?) [y/N] ',
       );
       if (ow === 'y' || ow === 'yes') {
-        overwriteWithSingleBot(cfg, CHANNEL_ID, {
+        const accId = overwriteWithSingleBot(cfg, CHANNEL_ID, {
           clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main', ...cardFields,
         });
-        summary = '已覆盖为新机器人 → account: apibot, agent: main';
+        summary = `已覆盖为新机器人 → account: ${accId}, agent: main`;
       } else {
         const input = await askUserInput('\n新机器人绑定的智能体 id？(agent id) [默认 main] ');
         const agentId = input || 'main';
         const newId = addBotAccount(cfg, CHANNEL_ID, {
           clientId: creds.clientId, clientSecret: creds.clientSecret, agentId, ...cardFields,
         });
-        summary = `已新增机器人 → account: ${newId}, agent: ${agentId}`;
+        // 同 agent 已有 binding 时只会更新 accountId，不会多写一条
+        summary = `已写入机器人 → account: ${newId}, agent: ${agentId}（同 agent 不重复 binding）`;
       }
     } else {
-      addBotAccount(cfg, CHANNEL_ID, {
+      const accId = addBotAccount(cfg, CHANNEL_ID, {
         clientId: creds.clientId, clientSecret: creds.clientSecret, agentId: 'main', ...cardFields,
       });
-      summary = '已配置机器人 → account: apibot, agent: main';
+      summary = `已配置机器人 → account: ${accId}, agent: main`;
     }
     applyGatewayEndpoint(cfg);
     applyLocalPaths(cfg, isLocal);

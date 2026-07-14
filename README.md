@@ -25,7 +25,7 @@
 
 | 日期 | 标识 | 更新内容 |
 |------|------|---------|
-| 2026-07-14 | 🚀 | **v0.8.21-fix30 稳定版**：① AI 卡流式串行队列+尾随合并，过程中不再半截/乱序短盖长；② 终态强制 flush+FINISHED 前 stream 全量覆盖，杜绝定格截断；③ 保留 `answerActToken` 双卡机制（短单卡/长短文新卡）；④ OpenClaw 对齐错误中文映射（含 `No available channel` 分发无线路）；⑤ 即时 ACK「🦸 正在召唤大模型…」；⑥ 纯工具打头展示「🤖 大模型已收到需求」+ 工具行；⑦ 清理 coverage/本地配置出库、完善 .gitignore |
+| 2026-07-14 | 🚀 | **v0.8.21-fix30 稳定版**：① 流式串行队列+尾随合并（过程/终态不再半截）；② `answerActToken` 双卡保留；③ OpenClaw 对齐错误中文映射；④ ACK「🦸 正在召唤大模型…」+ 纯工具打头「🤖 大模型已收到需求」；⑤ **安装向导**：accountId 由 clientId 推导（不再写死 apibot）、同 agent 不重复 bindings；⑥ **移除** `cardToolVar`/`cardProcessVar` 配置（工具进度统一写入 `cardContentVar`）；⑦ 仓库清理 |
 | 2026-06-29 | 🐛 | **修复答案卡路径触发 500**：`finishAICard` 新增 `skipInputingWalk` 参数；答案卡（`answerCard` 模式）路径是新建的专用模板静态卡，不应走 INPUTING 过渡——内置答案卡模板字段与原流式卡可能不兼容，`streamAICard` INPUTING 切换时钉钉返回 500。答案卡调用时显式传 `skipInputingWalk=true` 直接 PUT FINISHED；message 工具路径仍走 `!inputingStarted` 守卫保留空内容修复。 |
 | 2026-06-29 | 🔧 | **答案卡触发阈值默认 600 → 500**：多数中文 LLM 实际回复（500-700 字）跨过原 600 阈值更频繁，改默认值减少"两张卡"体验。已有用户配置不动。 |
 | 2026-06-29 | 🐛 | **修复钉钉 AI 卡片流式回复不完整 例 “你...” 的问题** ：采用**延迟建卡**模式，让流式文本积累更多文本，把建卡时机放到真正的文本到来之后，再进行建卡流式卡片展示 |
@@ -109,9 +109,7 @@
 | `accounts.*.clientId` | 钉钉应用 ClientId |
 | `accounts.*.clientSecret` | 钉钉应用 ClientSecret |
 | `cardTemplateId` | AI Card 模板 ID，不填则使用官方默认模板 |
-| `cardContentVar` | 最终回复内容变量名，不填默认 `msgContent` |
-| `cardProcessVar` | 中间过程（block 状态）变量名，不填默认使用 `cardContentVar` |
-| `cardToolVar` | 工具调用输出变量名，不填则不写入卡片 |
+| `cardContentVar` | 卡片内容变量名，不填默认 `msgContent`（过程/工具/终稿统一写入此字段） |
 | `answerCard` | 答案卡模式开关，**默认开启**；显式设 `false` 关闭 |
 | `answerActToken` | 答案卡触发阈值（token），默认 `500`；最终答案 ≤ 此值直接在原卡定稿，> 此值才另开答案卡 |
 | `answerCardTemplateId` | 答案卡模板 ID，不填用内置默认模板（需含 `content` 变量） |

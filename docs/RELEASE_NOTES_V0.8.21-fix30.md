@@ -35,12 +35,15 @@ openclaw gateway restart
 | 错误 | OpenClaw 对齐中文映射；分发「无可用通道」不再误报负载过高 |
 | 首响 | `🦸 正在召唤大模型…` |
 | 纯工具打头 | `🤖 大模型已收到需求` + `🔧 正在调用：name` |
+| 安装向导 | accountId=`bot-<clientId后缀>`（非 apibot）；同 agent 不重复 bindings |
+| 配置清理 | **已删除** `cardToolVar` / `cardProcessVar`（统一 `cardContentVar`） |
 
 ## 升级注意 / Upgrade notes
 
 - 必须 **重启 gateway** 后新 dist 才生效。
 - 与官方同 channel id，`--force` 覆盖即可，无需卸载。
 - OpenClaw ≥ **2026.4.9**。
+- 若配置里仍有 `cardToolVar`/`cardProcessVar`，可手动删掉，已忽略不再使用。
 
 ## 文档
 

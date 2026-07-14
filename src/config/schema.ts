@@ -87,12 +87,8 @@ const DingtalkSharedConfigShape = {
   groupReplyMode: GroupReplyModeSchema,
   /** AI Card 模板 ID，不填则使用官方默认模板 */
   cardTemplateId: z.string().optional(),
-  /** AI Card 最终内容变量名，对应卡片模板中的变量字段，不填默认 msgContent */
+  /** AI Card 内容变量名，对应卡片模板中的变量字段，不填默认 msgContent */
   cardContentVar: z.string().optional().default("msgContent"),
-  /** AI Card 中间过程变量名，不填默认 cardContentVar 同值 */
-  cardProcessVar: z.string().optional(),
-  /** AI Card 工具输出变量名，不填则不写入工具输出 */
-  cardToolVar: z.string().optional(),
   /** 答案专用卡模式：超过 answerActToken 的最终答案投到一张新的静态文本卡，原流式卡定格"思考完成"，
    *  规避钉钉流式卡 FINISHED 后仍抖动的官方 bug。默认开启（显式设 false 才关）。 */
   answerCard: z.boolean().optional(),

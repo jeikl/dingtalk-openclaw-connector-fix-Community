@@ -33,6 +33,16 @@ Match only when `rawError` is non-empty; OpenClaw user-facing strings + Failover
 
 ACK: `🦸 正在召唤大模型…`. Tool-first (no model text yet): `🤖 大模型已收到需求` + `🔧 正在调用：name` (display-only placeholder).
 
+### Install wizard: fixed accountId + duplicate bindings
+
+- accountId derived as `bot-` + last 8 of clientId (not hardcoded `apibot`)
+- Reuse account when same clientId re-installed
+- `upsertDingTalkBinding`: one binding per channel+agentId (update accountId, never push a second row)
+
+### Removed `cardToolVar` / `cardProcessVar`
+
+Tool progress is written into the same `cardContentVar` stream body; extra card fields removed from schema + `openclaw.plugin.json` registration to avoid DingTalk template errors.
+
 ### Repo hygiene
 
 Ignore/remove coverage, local `.env.test`, `.claude` local settings, etc.

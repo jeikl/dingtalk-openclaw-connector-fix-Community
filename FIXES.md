@@ -66,19 +66,43 @@
 
   占位仅展示、不进 `accumulatedText`，不影响终稿；有真实流式正文后自动切换  
 
+### 🐛 安装向导：accountId 写死 apibot + bindings 重复
+
+**问题**：
+
+1. 手动填 clientId/secret 或首装时，`accountId` 固定写成 `apibot`  
+2. 若某个 `agentId`（如 `main`）已有钉钉 binding，再装会 **多 push 一条** 重复 binding  
+
+**修复**（`bin/wizard-config.mjs` / `bin/dingtalk-connector.js`）：
+
+- accountId = `bot-` + clientId 末 8 位（冲突则 `-2`/`-3`…）  
+- 同一 clientId 再装 → **复用**已有 accountId，只更新 secret  
+- `upsertDingTalkBinding`：同 channel+agentId **只保留一条**（已有则更新 accountId）  
+- 覆盖模式同样按 clientId 推导，不再写死 `apibot`  
+
+### 🔧 移除 cardToolVar / cardProcessVar 配置项
+
+官方卡片多字段变量易 500/不兼容。工具进度已由连接器策略写入**同一** `cardContentVar`（正文 + `🔧 正在调用：…`），故从：
+
+- `openclaw.plugin.json` 配置注册（顶层 + accounts）  
+- `schema.ts`  
+- 文档配置表  
+
+中删除 `cardToolVar`、`cardProcessVar`；运行时不再向独立工具变量写内容。
+
 ### 🧹 仓库卫生
 
 - `.gitignore`：coverage、.env.*、.claude、.codegraph、logs 等  
 - 移除误跟踪的 coverage / `.env.test` / 本地 `.claude` 配置  
 
-**涉及文件**：`src/reply-dispatcher.ts`、`src/services/messaging/card.ts`、`src/core/message-handler.ts`、`.gitignore`、文档版本号  
+**涉及文件**：`src/reply-dispatcher.ts`、`src/services/messaging/card.ts`、`src/core/message-handler.ts`、`src/config/schema.ts`、`openclaw.plugin.json`、`bin/wizard-config.mjs`、`bin/dingtalk-connector.js`、文档  
 
 **安装**：
 
 ```bash
-npm i -g @jeik/dingtalk-connector@0.8.21-fix30
+openclaw plugins install @jeik/dingtalk-connector@0.8.21-fix30 --force
 # 或
-openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix30.tgz --force
+openclaw plugins install @jeik/dingtalk-connector@fix --force
 openclaw gateway restart
 ```
 

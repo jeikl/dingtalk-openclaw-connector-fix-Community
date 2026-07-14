@@ -257,12 +257,6 @@
             "type": "string",
             "default": "msgContent"
           },
-          "cardProcessVar": {
-            "type": "string"
-          },
-          "cardToolVar": {
-            "type": "string"
-          },
           "answerCard": {
             "type": "boolean"
           },
@@ -503,12 +497,6 @@
                 "cardContentVar": {
                   "type": "string",
                   "default": "msgContent"
-                },
-                "cardProcessVar": {
-                  "type": "string"
-                },
-                "cardToolVar": {
-                  "type": "string"
                 },
                 "answerCard": {
                   "type": "boolean"

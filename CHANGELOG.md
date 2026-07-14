@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ✨ **纯工具打头占位** — 尚无模型正文时展示 `🤖 大模型已收到需求` + `🔧 正在调用：<工具>`（不进终稿）。  
   **Tool-first placeholder** — fixed receipt line + tool line when no model text yet.
 
+### 修复 / Fixed（安装向导）
+- 🐛 **accountId 不再写死 `apibot`** — 由 clientId 推导 `bot-<后缀>`；同 clientId 复用账号。  
+  **accountId from clientId** — no more hardcoded `apibot`.
+- 🐛 **bindings 同 agent 不重复** — 同一 channel+agentId 只保留一条，已有则更新 accountId。  
+  **No duplicate agent bindings**.
+
+### 变更 / Changed
+- 🔧 **移除配置项 `cardToolVar` / `cardProcessVar`** — 工具/过程统一写入 `cardContentVar`，降低官方卡片多字段兼容问题。  
+  **Removed** `cardToolVar` / `cardProcessVar` from plugin config registration.
+
 ### 保留 / Unchanged by design
 - ✅ **`answerActToken` 双卡** — token≤阈值原卡定稿；token>阈值原卡思考完成 + 静态答案卡；答案卡失败降级原卡。  
   **Dual-card threshold** preserved (`answerCard` / `answerActToken` / `answerCardTemplateId`).
@@ -32,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 其他 / Misc
 - 🧹 清理 coverage / 本地 env·claude 出库；完善 `.gitignore`。  
   **Repo hygiene** — drop generated/local artifacts from git.
-- 📦 版本 `0.8.21-fix30`；建议 `openclaw plugins install @jeik/dingtalk-connector@fix --force` 后 `gateway restart`。
+- 📦 版本 `0.8.21-fix30`；`openclaw plugins install @jeik/dingtalk-connector@fix --force` 后 `gateway restart`。
 
 ## [0.8.21] - 2026-06-28
 

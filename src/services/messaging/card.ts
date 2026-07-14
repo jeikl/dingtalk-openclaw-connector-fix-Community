@@ -374,7 +374,7 @@ export async function streamAICard(
   finished: boolean = false,
   config?: DingtalkConfig,
   log?: any,
-  /** 覆盖默认变量名，优先级：contentVar > config.cardProcessVar > config.cardContentVar */
+  /** 覆盖默认变量名，优先级：contentVar > config.cardContentVar > 默认 msgContent */
   contentVar?: string,
 ): Promise<void> {
   // marker 剥离：所有卡片写入都经过这里，是钉钉侧的单一 chokepoint。
@@ -385,8 +385,8 @@ export async function streamAICard(
     content = cleaned;
   }
 
+  // 统一写入 content 字段（cardContentVar）；工具进度已合并进同一变量的正文+工具行，不再写独立 tool 字段
   const varName = contentVar
-    || (config?.cardProcessVar as string)
     || (config?.cardContentVar as string)
     || DEFAULT_CARD_CONTENT_VAR;
   // 防御 null card（createAICardForTarget 失败返回 null，调用方可能用 as any 绕过类型检查）

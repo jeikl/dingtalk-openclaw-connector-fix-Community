@@ -311,9 +311,6 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
   // 异步模式：累积完整响应
   let asyncModeFullResponse = "";
 
-  // 工具输出累积（用于写入卡片的 cardToolVar）
-  let accumulatedToolOutput = "";
-
   // 当前工具调用行（嵌入流式文本下方的单行旋转文本）
   let currentToolLine = "";
   /**
@@ -1470,28 +1467,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
             log.info(`[DingTalk][onCommandOutput] dws 命令执行失败，跳过: ${product}，exitCode=${payload.exitCode}`);
           }
         }
-
-        // 工具输出写入 AI Card 卡片变量（cardToolVar）
-        const toolVar = (account.config as DingtalkConfig)?.cardToolVar as string;
-        if (toolVar && payload.output && currentCardTarget) {
-          accumulatedToolOutput = payload.output;
-          const now = Date.now();
-          if (now - lastUpdateTime >= updateInterval) {
-            lastUpdateTime = now;
-            void streamAICard(
-              currentCardTarget as any,
-              payload.output,
-              false,
-              account.config as DingtalkConfig,
-              log,
-              toolVar
-            ).then(() => {
-              log.debug(`[DingTalk][onCommandOutput] ✅ 工具输出写入 AI Card（${toolVar}）`);
-            }).catch((err: any) => {
-              log.error(`[DingTalk][onCommandOutput] ❌ 工具输出写入失败：${err.message}`);
-            });
-          }
-        }
+        // 工具进度改由 onToolStart + 正文同一 cardContentVar 展示，不再写独立 cardToolVar 字段
       },
     },
     markDispatchIdle,
