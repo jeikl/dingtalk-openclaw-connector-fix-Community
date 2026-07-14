@@ -144,7 +144,7 @@ Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingta
 npx -y @jeik/dingtalk-connector install
 
 # force overwrite when a local dingtalk-connector already exists
-npx -y @jeik/dingtalk-connector --force
+npx -y @jeik/dingtalk-connector install --force
 ```
 
 **2) Plugin only** (credentials already set / manual setup):

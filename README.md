@@ -184,7 +184,7 @@
 npx -y @jeik/dingtalk-connector install
 
 # 已有 dingtalk-connector / 装不上时强制覆盖
-npx -y @jeik/dingtalk-connector --force
+npx -y @jeik/dingtalk-connector install --force
 ```
 
 **2）只装插件**（凭证已配好，或走手动配置文档）：

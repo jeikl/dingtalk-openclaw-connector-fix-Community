@@ -9,7 +9,7 @@
 npx -y @jeik/dingtalk-connector install
 
 # 强制覆盖
-npx -y @jeik/dingtalk-connector --force
+npx -y @jeik/dingtalk-connector install --force
 
 # 仅装插件
 openclaw plugins install @jeik/dingtalk-connector --force
