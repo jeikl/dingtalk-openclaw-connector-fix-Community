@@ -74,16 +74,31 @@ Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48
 
 ## ✨ Enhanced Features
 
-- 🔧 Markdown image support for direct URLs and local paths, no download required:
-  - Markdown syntax `![](direct-url)` or `![](local-path)` sends images directly
-  - Compatible with mediaId format
-  - ⚠️ This plugin supports image messages, but DingTalk side won't trigger this feature automatically. Use the following prompt to guide the Agent:
+### Image sending: full fix & upgrade
 
-    ```
-    Please write a DingTalk image sending skill following this approach: use markdown to send images, with image captions for rich text; direct URLs or local paths can be embedded directly in markdown, and if local paths contain spaces, rename to remove spaces first before sending.
-    ```
+A complete overhaul of the official’s weak image pipeline — mixed image sending with no dead corners:
 
-- 🎨 Custom AI Card templates supported; **if `cardTemplateId` is omitted**, defaults to community template `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` (copy button, etc.).
+| Path | Capability |
+|------|------------|
+| **Normal chat reply** | Agent embeds `![alt](…)` in markdown; upload to mediaId before finalize |
+| **message tool `media` / mediaUrl** | Proactive image send (local / private LAN / public URL) |
+| **message tool markdown body** | Nested `![](…)` (local, `file://`, http(s)) with text in one message |
+| **Configurable layout** | Default: **separate** text & image; `messageImageMd: true` can **merge** multi-image + text into one markdown |
+
+**All source types render correctly:**
+
+- Public URLs `https://…`
+- Private/LAN URLs `http://intranet/…`
+- Local absolute paths `/tmp/…`, `/root/…`, …
+- **`/mnt` mounts** (Chinese paths, SMB shares, …)
+- `file://` local URIs
+- Existing DingTalk mediaIds (`@lADP…`)
+
+Also: code-block paths are **not** uploaded; remote images download-then-upload; local upload retries via `/tmp`; image + download link can stay in one bubble.
+
+### AI Card template
+
+- Custom stream card templates supported; **if `cardTemplateId` is omitted**, defaults to community template `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` (copy button, etc.).
 
 ### Minimal config
 
