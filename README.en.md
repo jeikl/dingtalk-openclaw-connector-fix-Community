@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix48</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix49</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,7 +23,7 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.21-fix48 · 2026-07-21 (current)
+### 🚀 v0.8.21-fix49 · 2026-07-21 (current)
 
 **Theme: message tool answer card by default (toggle)**
 
@@ -68,7 +68,7 @@ Local images (incl. `/mnt`) · `messageImageMd` · LocalImage diagnostics.
 | 2026-06-28 | npm `@jeik/dingtalk-connector`; premature finalization fix |
 | 2026-05 | MD images; multi-turn spam; 4.29 empty reply; WS phantom reconnect |
 
-Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48](docs/RELEASE_NOTES_V0.8.21-fix48.md)
+Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48](docs/RELEASE_NOTES_V0.8.21-fix49.md)
 
 ---
 

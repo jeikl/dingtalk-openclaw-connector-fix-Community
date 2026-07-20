@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix49] - 2026-07-21
+
+### 变更 / Changed
+- 🎨 **默认流式 AI Card 模板** — `cardTemplateId` 默认 `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema`；`cardContentVar` 默认 `content`（与增强模板字段一致）。
+- 📚 文档：图片发送全面修复叙述；钉钉专属配置最小/最大化（单·多 Agent）；`messageAnswerCard` 等。
+
+### 安装 / Install
+```bash
+npx -y @jeik/dingtalk-connector install --force
+openclaw gateway restart
+```
+
 ## [0.8.21-fix48] - 2026-07-21
 
 ### 新增 / Added
