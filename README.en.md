@@ -74,33 +74,43 @@ Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48
 
 ## ✨ Enhanced Features
 
-### Image sending: full fix & upgrade
+### 🖼️ Image sending: full fix & upgrade
 
-A complete overhaul of the official’s weak image pipeline — mixed image sending with no dead corners:
+> 🔥 **No dead corners** · mixed send paths · far beyond the official’s weak image pipeline  
+> ✅ Chat · ✅ message direct · ✅ markdown embed · ✅ split or merge layout
 
-| Path | Capability |
-|------|------------|
-| **Normal chat reply** | Agent embeds `![alt](…)` in markdown; upload to mediaId before finalize |
-| **message tool `media` / mediaUrl** | Proactive image send (local / private LAN / public URL) |
-| **message tool markdown body** | Nested `![](…)` (local, `file://`, http(s)) with text in one message |
-| **Configurable layout** | Default: **separate** text & image; `messageImageMd: true` can **merge** multi-image + text into one markdown |
+Full-path image fixes — every channel below renders correctly:
 
-**All source types render correctly:**
+| | Path | Capability |
+|--|------|------------|
+| 💬 | **Normal chat reply** | Agent embeds `![alt](…)`; upload to mediaId before finalize |
+| 📤 | **message · mediaUrl** | Proactive direct send (local / LAN / public) |
+| 📝 | **message · markdown body** | Nested `![](…)` (local / `file://` / URL) with text |
+| ⚙️ | **Configurable layout** | Default 📎 **separate**; `messageImageMd: true` → 🧩 **merge** one markdown |
 
-- Public URLs `https://…`
-- Private/LAN URLs `http://intranet/…`
-- Local absolute paths `/tmp/…`, `/root/…`, …
-- **`/mnt` mounts** (Chinese paths, SMB shares, …)
-- `file://` local URIs
-- Existing DingTalk mediaIds (`@lADP…`)
+#### 🌐 Source types covered
 
-Also: code-block paths are **not** uploaded; remote images download-then-upload; local upload retries via `/tmp`; image + download link can stay in one bubble.
+| | Type | Examples |
+|--|------|----------|
+| 🌍 | Public URL | `https://…` |
+| 🏠 | Private / LAN URL | `http://intranet/…` |
+| 📁 | Local absolute path | `/tmp/…` · `/root/…` |
+| 💾 | **`/mnt` mounts** | Chinese paths · SMB shares |
+| 🔗 | `file://` URI | `file:///mnt/…` · `file:///tmp/…` |
+| 🆔 | Existing mediaId | `@lADP…` |
 
-### AI Card template
+#### 🛡️ Extra safeguards
 
-- Custom stream card templates supported; **if `cardTemplateId` is omitted**, defaults to community template `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` (copy button, etc.).
+- 📦 Code-block / inline-code paths are **not** uploaded
+- ⬇️ Remote: **download then upload**; local: **`/tmp` retry** on failure
+- 🫧 Image + download link in **one bubble**: `![]` → mediaId, URL kept as-is
 
-### Minimal config
+### 🎨 AI Card template
+
+- ✨ Custom stream cards; **if `cardTemplateId` is omitted**, defaults to  
+  `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` (📋 copy button, etc.)
+
+### ⚙️ Minimal config
 
 ```json
 "channels": {
