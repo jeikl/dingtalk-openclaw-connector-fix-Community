@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix45</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix46</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,20 +23,22 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.21-fix45 · 2026-07-20 (current)
+### 🚀 v0.8.21-fix46 · 2026-07-20 (current)
 
-**Theme: image + download link in one bubble · only `![]` · quote card cache**
+**Theme: always-on local MD image diagnostics (behavior same as fix45)**
 
 | | Change |
 |--|--------|
-| 📷 **Image + download URL** | `![](http)` → upload mediaId; **original download URL stays in the same message** |
-| ✅ **Only `![]()`** | No bare-path scan; code-block paths not uploaded / no false grey-image warn |
-| 📎 **Quoted AI cards** | Cache final card text for quote backfill |
-| 🌐 **message media** | `media: "https://..."` download-then-upload |
+| 🔍 **LocalImage logs** | message path: scan / exists / upload / residual |
+| 🔍 **MediaIdTrace** | `mdImgs`, `residualLocal`, API-before preview |
 
 ```bash
 npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
+
+### 📦 v0.8.21-fix45 · 2026-07-20
+
+Image + download link one bubble · only `![]` · quote cache · residual false-positive fix.
 
 ### 📦 v0.8.21-fix38 · 2026-07-20
 

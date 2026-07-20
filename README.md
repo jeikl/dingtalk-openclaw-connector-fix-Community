@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix45</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix45.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix46</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix46.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,20 +23,22 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.21-fix45 · 2026-07-20（当前）
+### 🚀 v0.8.21-fix46 · 2026-07-20（当前）
 
-**主题：图 + 下载链接单气泡 · 只认 `![]` · 引用卡片缓存**
+**主题：本地 MD 图灰图诊断日志（逻辑同 fix45）**
 
 | | 改动 |
 |--|------|
-| 📷 **图 + 下载链** | `![](http)` 上传为 mediaId；**下载链接原 URL 留在同一条消息**（不被钉钉改成 `@lADP`） |
-| ✅ **只处理 `![]()`** | 不扫裸路径；代码块内路径不上传、不误报灰图 |
-| 📎 **引用 AI 卡** | 定稿缓存正文，引用时回填（`CardCache`） |
-| 🌐 **message media** | `media: "https://..."` 下载再上传 |
+| 🔍 **LocalImage 日志** | message 路径 always-on：扫描 / exists / 上传成败 / residual |
+| 🔍 **MediaIdTrace** | `mdImgs`、`residualLocal`、API前 preview，方便对灰图 |
 
 ```bash
 npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
+
+### 📦 v0.8.21-fix45 · 2026-07-20
+
+图 + 下载链接单气泡 · 只认 `![]` · 引用卡片缓存 · residual 误报修复。
 
 ### 📦 v0.8.21-fix38 · 2026-07-20
 
@@ -64,7 +66,7 @@ message 远程 `media` 下载上传。
 | 2026-06-28 | 上线 npm `@jeik/dingtalk-connector`；过程消息提前定稿修复 |
 | 2026-05 | MD 直链/本地图；多轮刷屏；4.29+ 无文本输出；WebSocket 幻影重连 |
 
-完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix45](docs/RELEASE_NOTES_V0.8.21-fix45.md)
+完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix46](docs/RELEASE_NOTES_V0.8.21-fix46.md)
 
 ---
 

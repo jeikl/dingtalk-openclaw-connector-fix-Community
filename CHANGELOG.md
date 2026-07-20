@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix46] - 2026-07-20
+
+### 诊断 / Diagnostics
+- ✨ **message 本地 MD 图灰图排查日志** — 恢复并加强 always-on `[DingTalk][LocalImage]` / `[MediaIdTrace]`：  
+  - `sendTextToDingTalk` 入口 / 处理后 / API前  
+  - `processImagesForOutbound` 扫描每张 `![]`（kind=local|http|mediaId、inCode、exists、size）  
+  - 本地上传成败 / 远程下载上传 / `residualLocal` 残留告警  
+  - MediaIdTrace 固定字段：`mediaIdCount` / `mdImgs` / `residualLocal` / preview  
+
+逻辑仍基于 fix45（图+下载同泡、只认 `![]`、代码块跳过）。
+
+### 安装 / Install
+```bash
+npx -y @jeik/dingtalk-connector install --force
+openclaw gateway restart
+```
+
 ## [0.8.21-fix45] - 2026-07-20
 
 生产稳定版 / Production-stable community release。

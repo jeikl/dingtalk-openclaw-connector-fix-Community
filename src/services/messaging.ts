@@ -842,12 +842,29 @@ export async function sendTextToDingTalk(params: {
 
   const targetParam = resolveOutboundTarget(target);
 
+  console.log(
+    `[DingTalk][LocalImage] sendTextToDingTalk 入口 | target=${target} textLen=${text?.length ?? 0}`,
+  );
+  logMediaIdTrace("sendTextToDingTalk:in", text, `target=${target}`, true);
+
   // 图片：![] 上传为 mediaId；下载链接原 URL 留在同一条 markdown（不拆消息）
+  const beforeLen = text?.length ?? 0;
   try {
     const oapiToken = await getOapiAccessToken(config);
+    console.log(
+      `[DingTalk][LocalImage] sendTextToDingTalk 入口 | target=${target} textLen=${beforeLen} hasToken=${!!oapiToken}`,
+    );
     if (oapiToken && text) {
       const processed = await processImagesForOutbound(text, oapiToken, log);
       text = processed.text;
+      console.log(
+        `[DingTalk][LocalImage] sendTextToDingTalk 处理后 | ${beforeLen}→${text.length} 字`,
+      );
+      logMediaIdTrace("sendTextToDingTalk:after-process", text, undefined, true);
+    } else if (!oapiToken) {
+      console.warn(
+        `[DingTalk][LocalImage] sendTextToDingTalk 无 oapiToken，跳过图片上传（本地 MD 图会灰）`,
+      );
     }
   } catch (err: any) {
     console.warn(
@@ -856,7 +873,7 @@ export async function sendTextToDingTalk(params: {
   }
 
   const msgType: DingTalkMsgType = shouldSendAsMarkdown(text) ? "markdown" : "text";
-  logMediaIdTrace("sendTextToDingTalk:API前", text, `msgType=${msgType}`);
+  logMediaIdTrace("sendTextToDingTalk:API前", text, `msgType=${msgType}`, true);
 
   return sendProactive(config, targetParam, text, {
     msgType,
