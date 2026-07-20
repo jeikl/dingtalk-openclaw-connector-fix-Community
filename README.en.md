@@ -99,9 +99,11 @@ Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48
 
 Defaults apply: stream card `0d2c84b3-…schema`, session answer card on, message answer card on, `messageImageMd=false`.
 
-### Maximal config (documented fields only, all default values)
+> **Maximal config ≡ minimal config.** The blocks below only spell out defaults so the fields are easier to understand. Behavior is the same as the credential-only minimal config — use minimal in production.
 
-Same as “leave unset”; shown for **single Agent** and **multi Agent**.
+### Maximal config (for illustration; defaults written out)
+
+**Single Agent** and **multi Agent** (all values are defaults — **not extra features**).
 
 **Single Agent (top-level credentials):**
 
