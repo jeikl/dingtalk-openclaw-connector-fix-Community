@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix38] - 2026-07-20
+
+### 修复 / Fixed
+- 🐛 **message 工具 `media` 远程 https 直链上传失败** — 旧逻辑把 `https://picsum.photos/...` 当本地路径 `existsSync` →「文件不存在」；无扩展名 URL 还被误判为 `file`。现：远程 URL **先下载到临时文件再上传**；无扩展名图床默认 **image**；下载/再上传失败时 **photoURL 直链兜底**；临时文件 `finally` 清理。  
+  **Remote https media for message tool** — download-to-tmp then upload; extensionless hosts as image; photoURL fallback.
+
+### 诊断 / Diagnostics
+- ✨ 日志前缀 **`[DingTalk][RemoteMedia]`**（开始下载 / 成功 / 失败 / 清理）。
+
+### 安装 / Install
+```bash
+npx -y @jeik/dingtalk-connector install --force
+openclaw gateway restart
+```
+
 ## [0.8.21-fix37] - 2026-07-20
 
 生产稳定版 / Production-stable community release（本地图 + message 图文策略）。

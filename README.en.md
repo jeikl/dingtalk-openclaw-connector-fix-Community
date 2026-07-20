@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix37</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix38</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,7 +23,21 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.21-fix37 · 2026-07-20 (current)
+### 🚀 v0.8.21-fix38 · 2026-07-20 (current)
+
+**Theme: message tool remote https media**
+
+| | Change |
+|--|--------|
+| 🌐 **Remote media** | `media: "https://..."` is **downloaded then uploaded** (no more local-path “file not found”) |
+| 🖼️ **Extensionless hosts** | e.g. `picsum.photos/seed/...` treated as **image** |
+| 🛟 **Fallback** | photoURL direct send if download/re-upload fails; logs `[DingTalk][RemoteMedia]` |
+
+```bash
+npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
+```
+
+### 📦 v0.8.21-fix37 · 2026-07-20
 
 **Theme: local images (incl. `/mnt`) · message media layout · diagnostics**
 
@@ -33,10 +47,6 @@
 | 📦 **Code-block safe** | Paths inside fenced/inline code are **not** uploaded (param samples stay literal) |
 | ⚙️ **`messageImageMd`** | Default `false`: message tool sends **text then image** separately; `true` merges only multi-image + text into one markdown |
 | 🔍 **Diagnostics** | Prefix `[DingTalk][LocalImage]` — **no `debug` flag required** |
-
-```bash
-npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
-```
 
 ---
 
@@ -49,7 +59,7 @@ npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
 | 2026-06-28 | npm `@jeik/dingtalk-connector`; premature finalization fix |
 | 2026-05 | MD images; multi-turn spam; 4.29 empty reply; WS phantom reconnect |
 
-Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix37](docs/RELEASE_NOTES_V0.8.21-fix37.md)
+Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix38](docs/RELEASE_NOTES_V0.8.21-fix38.md)
 
 ---
 

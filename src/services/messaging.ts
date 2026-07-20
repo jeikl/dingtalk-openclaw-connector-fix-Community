@@ -705,10 +705,114 @@ function shouldSendAsMarkdown(text: string): boolean {
   return false;
 }
 
+function isRemoteHttpUrl(mediaUrl: string): boolean {
+  return /^https?:\/\//i.test((mediaUrl || "").trim());
+}
+
 function isImageMediaPath(mediaUrl: string): boolean {
-  const base = mediaUrl.split("?")[0]?.split("#")[0] || mediaUrl;
+  const raw = (mediaUrl || "").trim();
+  if (!raw) return false;
+  // 无扩展名的 http(s) 图床（如 picsum.photos/seed/x/200/200）默认当图片
+  if (isRemoteHttpUrl(raw)) {
+    const pathOnly = raw.split("?")[0]?.split("#")[0] || raw;
+    if (/\.(png|jpe?g|gif|bmp|webp|tiff|svg)$/i.test(pathOnly)) return true;
+    if (/\.(mp4|avi|mov|mkv|webm|mp3|wav|pdf|zip|doc|docx)$/i.test(pathOnly)) return false;
+    return true;
+  }
+  const base = raw.split("?")[0]?.split("#")[0] || raw;
   const ext = base.toLowerCase().split(".").pop() || "";
-  return ["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext);
+  return ["jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "svg"].includes(ext);
+}
+
+/**
+ * 远程 http(s) 媒体下载到临时文件，供再上传钉钉 media。
+ * 解决 message 工具 media=https://... 被当成本地路径「文件不存在」的问题。
+ */
+async function downloadRemoteMediaToTemp(
+  url: string,
+  log?: { info?: (...a: any[]) => void; warn?: (...a: any[]) => void },
+): Promise<string | null> {
+  const tag = "[DingTalk][RemoteMedia]";
+  try {
+    console.log(`${tag} 开始下载 | ${url}`);
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(60_000),
+      headers: { "User-Agent": "dingtalk-openclaw-connector/0.8.21" },
+    });
+    if (!res.ok) {
+      console.warn(`${tag} 下载失败 HTTP ${res.status} | ${url}`);
+      log?.warn?.(`${tag} 下载失败 HTTP ${res.status}`);
+      return null;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length === 0) {
+      console.warn(`${tag} 下载为空 | ${url}`);
+      return null;
+    }
+    if (buf.length > 20 * 1024 * 1024) {
+      console.warn(`${tag} 下载过大 ${buf.length} bytes | ${url}`);
+      return null;
+    }
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    let ext = ".bin";
+    if (ct.includes("png")) ext = ".png";
+    else if (ct.includes("jpeg") || ct.includes("jpg")) ext = ".jpg";
+    else if (ct.includes("gif")) ext = ".gif";
+    else if (ct.includes("webp")) ext = ".webp";
+    else if (ct.includes("mp4")) ext = ".mp4";
+    else {
+      const m = (url.split("?")[0] || "").match(/\.(png|jpe?g|gif|webp|mp4|pdf)$/i);
+      if (m) ext = `.${m[1].toLowerCase().replace("jpeg", "jpg")}`;
+      else if (isImageMediaPath(url)) ext = ".jpg";
+    }
+    const { default: os } = await import("node:os");
+    const { default: path } = await import("node:path");
+    const { writeFileSync } = await import("node:fs");
+    const tmp = path.join(
+      os.tmpdir(),
+      `dingtalk-remote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`,
+    );
+    writeFileSync(tmp, buf);
+    console.log(`${tag} 下载成功 | bytes=${buf.length} ct=${ct || "-"} tmp=${tmp}`);
+    return tmp;
+  } catch (err: any) {
+    console.warn(`${tag} 下载异常 | ${err?.message || err}`);
+    log?.warn?.(`${tag} 下载异常: ${err?.message || err}`);
+    return null;
+  }
+}
+
+/** 将本地路径或远程 URL 解析为可 uploadMediaToDingTalk 的本地文件；返回 [localPath, cleanup?] */
+async function resolveMediaSourceToLocalFile(
+  mediaUrl: string,
+  mediaLocalRoots: readonly string[] | undefined,
+  log: { info?: (...a: any[]) => void; warn?: (...a: any[]) => void },
+): Promise<{ localPath: string; cleanup?: string } | null> {
+  if (isRemoteHttpUrl(mediaUrl)) {
+    const tmp = await downloadRemoteMediaToTemp(mediaUrl, log);
+    if (!tmp) return null;
+    return { localPath: tmp, cleanup: tmp };
+  }
+  const { toLocalPath } = await import("./media.ts");
+  const _fs = await import("fs");
+  const _path = await import("path");
+  let resolved = toLocalPath(mediaUrl);
+  if (!_fs.existsSync(resolved) && mediaLocalRoots?.length && !_path.isAbsolute(resolved)) {
+    for (const root of mediaLocalRoots) {
+      const candidate = _path.resolve(root, resolved);
+      if (_fs.existsSync(candidate)) {
+        log.info?.(`相对路径解析成功：${mediaUrl} → ${candidate}`);
+        resolved = candidate;
+        break;
+      }
+    }
+  }
+  if (!_fs.existsSync(resolved)) {
+    console.warn(`[DingTalk][RemoteMedia] 本地文件不存在 | ${resolved}`);
+    return null;
+  }
+  return { localPath: resolved };
 }
 
 /**
@@ -827,79 +931,200 @@ export async function sendMediaToDingTalk(params: {
     const oapiToken = await getOapiAccessToken(config);
     log.info("oapiToken 获取成功");
 
-    // 根据文件扩展名判断媒体类型
-    log.info("开始解析文件扩展名，mediaUrl:", mediaUrl);
-    const ext = (mediaUrl.split("?")[0] || mediaUrl).toLowerCase().split(".").pop() || "";
-    log.info("文件扩展名:", ext);
+    // 判断媒体类型（http(s) 无扩展名默认 image，避免 picsum 等被当成 file）
+    log.info("开始解析媒体类型，mediaUrl:", mediaUrl);
+    const pathOnly = (mediaUrl.split("?")[0] || mediaUrl).toLowerCase();
+    const ext = pathOnly.includes(".")
+      ? pathOnly.split(".").pop() || ""
+      : "";
+    log.info("文件扩展名:", ext || "(无)", "isRemote:", isRemoteHttpUrl(mediaUrl));
     let mediaType: "image" | "file" | "video" | "voice" = "file";
 
     if (isImageMediaPath(mediaUrl)) {
       mediaType = "image";
-    } else if (
-      ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm"].includes(ext)
-    ) {
+    } else if (["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm"].includes(ext)) {
       mediaType = "video";
-    } else if (
-      ["mp3", "wav", "aac", "ogg", "m4a", "flac", "wma", "amr"].includes(ext)
-    ) {
+    } else if (["mp3", "wav", "aac", "ogg", "m4a", "flac", "wma", "amr"].includes(ext)) {
       mediaType = "voice";
     }
     log.info("媒体类型判断完成:", mediaType);
 
-    // 上传文件到钉钉
-    // 根据媒体类型设置不同的大小限制（钉钉 OAPI 官方限制）
     let maxSize: number;
     switch (mediaType) {
       case "image":
-        maxSize = 10 * 1024 * 1024; // 图片最大 10MB
+        maxSize = 10 * 1024 * 1024;
         break;
       case "voice":
-        maxSize = 2 * 1024 * 1024; // 语音最大 2MB
-        break;
-      case "video":
-      case "file":
-        maxSize = 20 * 1024 * 1024; // 视频和文件最大 20MB
+        maxSize = 2 * 1024 * 1024;
         break;
       default:
-        maxSize = 20 * 1024 * 1024; // 默认 20MB
+        maxSize = 20 * 1024 * 1024;
     }
-    
-    log.info("准备调用 uploadMediaToDingTalk，参数:", { mediaUrl, mediaType, maxSizeMB: (maxSize / (1024 * 1024)).toFixed(0) });
+
+    log.info("准备解析媒体源（本地或远程下载）:", {
+      mediaUrl,
+      mediaType,
+      maxSizeMB: (maxSize / (1024 * 1024)).toFixed(0),
+    });
     if (!oapiToken) {
       log.error("oapiToken 为空，无法上传媒体文件");
       return sendProactive(
         config,
         targetParam,
         "⚠️ 媒体文件处理失败：缺少 oapiToken",
-        { msgType: "text", replyToId },
+        { msgType: "text", replyToId, useAICard: false, fallbackToNormal: true },
       );
     }
-    // 解析文件路径：如果是相对路径且直接不存在，尝试基于 mediaLocalRoots 查找
-    let resolvedMediaUrl = mediaUrl;
-    const { toLocalPath } = await import('./media.ts');
-    const _fs = await import('fs');
-    const _path = await import('path');
-    const directPath = toLocalPath(mediaUrl);
-    if (!_fs.existsSync(directPath) && mediaLocalRoots?.length && !_path.isAbsolute(directPath)) {
-      for (const root of mediaLocalRoots) {
-        const candidate = _path.resolve(root, directPath);
-        if (_fs.existsSync(candidate)) {
-          log.info(`相对路径解析成功：${mediaUrl} → ${candidate}（基于 mediaLocalRoots）`);
-          resolvedMediaUrl = candidate;
-          break;
-        }
-      }
-    }
 
-    // —— 图片：默认文图分开；messageImageMd=true 且「文字里已有图 + 当前再带一张」才合并 markdown ——
-    if (mediaType === "image") {
-      let caption = text?.trim() ? text.trim() : "";
-      if (caption) {
+    // 远程 URL → 下载到 tmp；本地路径 → 解析 mediaLocalRoots
+    const resolved = await resolveMediaSourceToLocalFile(mediaUrl, mediaLocalRoots, log);
+    if (!resolved) {
+      log.error("无法解析媒体源（远程下载失败或本地不存在）:", mediaUrl);
+      if (text?.trim()) {
+        await sendProactive(config, targetParam, text.trim(), {
+          msgType: shouldSendAsMarkdown(text) ? "markdown" : "text",
+          replyToId,
+          useAICard: false,
+          fallbackToNormal: true,
+        });
+      }
+      // 远程图可再尝试 photoURL 直链（部分环境可用）
+      if (isRemoteHttpUrl(mediaUrl) && mediaType === "image") {
+        console.log(
+          `[DingTalk][RemoteMedia] 下载失败，尝试 photoURL 直链发送 | ${mediaUrl}`,
+        );
+        const result = await sendProactive(config, targetParam, mediaUrl, {
+          msgType: "image",
+          replyToId,
+          useAICard: false,
+          fallbackToNormal: true,
+        });
+        return {
+          ...result,
+          processQueryKey: result.processQueryKey || "image-remote-url-sent",
+        };
+      }
+      return sendProactive(config, targetParam, "⚠️ 媒体文件上传失败", {
+        msgType: "text",
+        replyToId,
+        useAICard: false,
+        fallbackToNormal: true,
+      });
+    }
+    const resolvedMediaUrl = resolved.localPath;
+    const cleanupTemp = resolved.cleanup;
+    const _fs = await import("fs");
+
+    try {
+      // —— 图片：默认文图分开；messageImageMd=true 且多图+文字才合并 markdown ——
+      if (mediaType === "image") {
+        let caption = text?.trim() ? text.trim() : "";
+        if (caption) {
+          try {
+            caption = await processLocalImages(caption, oapiToken, log);
+          } catch (err: any) {
+            log.warn(
+              `[sendMediaToDingTalk] 正文 processLocalImages 失败: ${err?.message || err}`,
+            );
+          }
+        }
+
+        const uploadResult = await uploadMediaToDingTalk(
+          resolvedMediaUrl,
+          mediaType,
+          oapiToken,
+          maxSize,
+          log,
+        );
+        log.info("uploadMediaToDingTalk 返回结果:", uploadResult);
+
+        if (!uploadResult?.mediaId) {
+          log.error("上传失败，返回错误提示");
+          if (caption) {
+            await sendProactive(config, targetParam, caption, {
+              msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
+              replyToId,
+              useAICard: false,
+              fallbackToNormal: true,
+            });
+          }
+          if (isRemoteHttpUrl(mediaUrl)) {
+            console.log(
+              `[DingTalk][RemoteMedia] 再上传失败，photoURL 直链兜底 | ${mediaUrl}`,
+            );
+            return sendProactive(config, targetParam, mediaUrl, {
+              msgType: "image",
+              replyToId,
+              useAICard: false,
+              fallbackToNormal: true,
+            });
+          }
+          return sendProactive(config, targetParam, "⚠️ 媒体文件上传失败", {
+            msgType: "text",
+            replyToId,
+            useAICard: false,
+            fallbackToNormal: true,
+          });
+        }
+
+        const mediaId = uploadResult.mediaId;
+        const imgsInCaption = (caption.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length;
+        const mergeMd =
+          config.messageImageMd === true && caption.length > 0 && imgsInCaption >= 1;
+
+        console.log(
+          `[DingTalk][LocalImage] sendMedia 图片策略 | messageImageMd=${config.messageImageMd === true} imgsInCaption=${imgsInCaption} mergeMd=${mergeMd} remote=${isRemoteHttpUrl(mediaUrl)}`,
+        );
+
+        if (mergeMd) {
+          const combined = `${caption}\n\n![](${mediaId})`;
+          const result = await sendProactive(config, targetParam, combined, {
+            msgType: "markdown",
+            replyToId,
+            useAICard: false,
+            fallbackToNormal: true,
+          });
+          return {
+            ...result,
+            processQueryKey: result.processQueryKey || "image-markdown-sent",
+          };
+        }
+
+        if (caption) {
+          await sendProactive(config, targetParam, caption, {
+            msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
+            replyToId,
+            useAICard: false,
+            fallbackToNormal: true,
+          });
+        }
+        const result = await sendProactive(config, targetParam, mediaId, {
+          msgType: "image",
+          replyToId,
+          useAICard: false,
+          fallbackToNormal: true,
+        });
+        return {
+          ...result,
+          processQueryKey: result.processQueryKey || "image-message-sent",
+        };
+      }
+
+      // —— 非图片：先文案、后媒体 ——
+      if (text && text.trim().length > 0) {
+        let caption = text.trim();
         try {
           caption = await processLocalImages(caption, oapiToken, log);
-        } catch (err: any) {
-          log.warn(`[sendMediaToDingTalk] 正文 processLocalImages 失败: ${err?.message || err}`);
+        } catch {
+          // ignore
         }
+        log.info("先发送文本消息:", caption.slice(0, 80));
+        await sendProactive(config, targetParam, caption, {
+          msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
+          replyToId,
+          useAICard: false,
+          fallbackToNormal: true,
+        });
       }
 
       const uploadResult = await uploadMediaToDingTalk(
@@ -911,16 +1136,8 @@ export async function sendMediaToDingTalk(params: {
       );
       log.info("uploadMediaToDingTalk 返回结果:", uploadResult);
 
-      if (!uploadResult?.mediaId) {
+      if (!uploadResult) {
         log.error("上传失败，返回错误提示");
-        if (caption) {
-          await sendProactive(config, targetParam, caption, {
-            msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
-            replyToId,
-            useAICard: false,
-            fallbackToNormal: true,
-          });
-        }
         return sendProactive(config, targetParam, "⚠️ 媒体文件上传失败", {
           msgType: "text",
           replyToId,
@@ -929,146 +1146,71 @@ export async function sendMediaToDingTalk(params: {
         });
       }
 
-      const mediaId = uploadResult.mediaId;
-      // 正文中已有 markdown 图（mediaId 或其它）+ 本次 media → 视为「多图+文字」
-      const imgsInCaption = (caption.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length;
-      const mergeMd =
-        config.messageImageMd === true && caption.length > 0 && imgsInCaption >= 1;
+      log.info("提取 media_id:", uploadResult.mediaId);
 
-      console.log(
-        `[DingTalk][LocalImage] sendMedia 图片策略 | messageImageMd=${config.messageImageMd === true} imgsInCaption=${imgsInCaption} mergeMd=${mergeMd}`,
-      );
+      const fileName =
+        mediaUrl.split("/").filter(Boolean).pop()?.split("?")[0] || "file";
 
-      if (mergeMd) {
-        const imageMd = `![](${mediaId})`;
-        const combined = `${caption}\n\n${imageMd}`;
-        log.info(
-          `[sendMediaToDingTalk] messageImageMd=true 且多图+文字，合并 markdown（caption=${caption.length}字）`,
+      if (mediaType === "video") {
+        const videoMarker = `[DINGTALK_VIDEO]{"path":"${resolvedMediaUrl}"}[/DINGTALK_VIDEO]`;
+        const { processVideoMarkers } = await import("./media");
+        await processVideoMarkers(
+          videoMarker,
+          "",
+          config,
+          oapiToken,
+          console,
+          true,
+          targetParam,
         );
-        const result = await sendProactive(config, targetParam, combined, {
-          msgType: "markdown",
-          replyToId,
-          useAICard: false,
-          fallbackToNormal: true,
-        });
         return {
-          ...result,
-          processQueryKey: result.processQueryKey || "image-markdown-sent",
+          ok: true,
+          usedAICard: false,
+          processQueryKey: "video-message-sent",
         };
       }
 
-      // 默认 / 单图图文 / 纯图：先文字（若有），再独立图片消息（阅读体验更好）
-      if (caption) {
-        await sendProactive(config, targetParam, caption, {
-          msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
+      if (!_fs.existsSync(resolvedMediaUrl)) {
+        return sendProactive(config, targetParam, "⚠️ 媒体文件不存在", {
+          msgType: "text",
           replyToId,
           useAICard: false,
           fallbackToNormal: true,
         });
       }
-      const result = await sendProactive(config, targetParam, mediaId, {
-        msgType: "image",
-        replyToId,
-        useAICard: false,
-        fallbackToNormal: true,
-      });
-      return {
-        ...result,
-        processQueryKey: result.processQueryKey || "image-message-sent",
+
+      const fileType = ext && ext.length < 12 ? ext : "file";
+      const fileInfo = {
+        path: resolvedMediaUrl,
+        fileName,
+        fileType,
       };
-    }
 
-    // —— 非图片：保留「先文案、后媒体」——
-    if (text && text.trim().length > 0) {
-      let caption = text.trim();
-      try {
-        caption = await processLocalImages(caption, oapiToken, log);
-      } catch {
-        // ignore
-      }
-      log.info("先发送文本消息:", caption.slice(0, 80));
-      await sendProactive(config, targetParam, caption, {
-        msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
-        replyToId,
-        useAICard: false,
-        fallbackToNormal: true,
-      });
-    }
-
-    const uploadResult = await uploadMediaToDingTalk(
-      resolvedMediaUrl,
-      mediaType,
-      oapiToken,
-      maxSize,
-      log,
-    );
-    log.info("uploadMediaToDingTalk 返回结果:", uploadResult);
-
-    if (!uploadResult) {
-      log.error("上传失败，返回错误提示");
-      return sendProactive(config, targetParam, "⚠️ 媒体文件上传失败", {
-        msgType: "text",
-        replyToId,
-      });
-    }
-
-    log.info("提取 media_id:", uploadResult.mediaId);
-
-    const fileName = mediaUrl.split("/").pop() || "file";
-
-    // 对于视频，使用视频标记机制
-    if (mediaType === "video") {
-      const videoMarker = `[DINGTALK_VIDEO]{"path":"${mediaUrl}"}[/DINGTALK_VIDEO]`;
-      const { processVideoMarkers } = await import("./media");
-      await processVideoMarkers(
-        videoMarker,
-        "",
-        config,
-        oapiToken,
-        console,
-        true,
-        targetParam,
-      );
+      const { sendFileProactive } = await import("./media.ts");
+      await sendFileProactive(config, targetParam, fileInfo, uploadResult.mediaId, log);
 
       return {
         ok: true,
         usedAICard: false,
-        processQueryKey: "video-message-sent",
+        processQueryKey: "file-message-sent",
       };
+    } finally {
+      if (cleanupTemp) {
+        try {
+          _fs.unlinkSync(cleanupTemp);
+          console.log(`[DingTalk][RemoteMedia] 已清理临时文件 | ${cleanupTemp}`);
+        } catch {
+          // ignore
+        }
+      }
     }
-
-    // 对于音频、文件，发送真正的文件消息
-    const fs = await import("fs");
-    const statsPath = toLocalPath(resolvedMediaUrl);
-    if (!fs.existsSync(statsPath)) {
-      return sendProactive(config, targetParam, "⚠️ 媒体文件不存在", {
-        msgType: "text",
-        replyToId,
-      });
-    }
-    
-    const fileType = ext || "file";
-    const fileInfo = {
-      path: resolvedMediaUrl,
-      fileName: fileName,
-      fileType: fileType,
-    };
-
-    const { sendFileProactive } = await import("./media.ts");
-    await sendFileProactive(config, targetParam, fileInfo, uploadResult.mediaId, log);
-
-    return {
-      ok: true,
-      usedAICard: false,
-      processQueryKey: "file-message-sent",
-    };
   } catch (err: any) {
     log.error("发送媒体消息失败:", err.message);
     return sendProactive(
       config,
       targetParam,
       `⚠️ 媒体文件处理失败: ${err.message}`,
-      { msgType: "text", replyToId },
+      { msgType: "text", replyToId, useAICard: false, fallbackToNormal: true },
     );
   }
 }

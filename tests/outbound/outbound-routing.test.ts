@@ -5,7 +5,7 @@
  * 以及 channel.ts resolveAllowFrom 返回空列表不影响内部策略过滤。
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock http client
 const mockPost = vi.hoisted(() => vi.fn());
@@ -33,16 +33,19 @@ vi.mock("../../src/utils/token.ts", async (importOriginal) => {
 const mockProcessLocalImages = vi.hoisted(() =>
   vi.fn(async (content: string) => content),
 );
+const mockUploadMediaToDingTalk = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({
+    mediaId: "@test-media-id",
+    cleanMediaId: "test-media-id",
+    downloadUrl: "https://down.dingtalk.com/media/test-media-id",
+  }),
+);
 vi.mock("../../src/services/media.ts", async (importOriginal) => {
   const orig = await importOriginal<typeof import("../../src/services/media.ts")>();
   return {
     ...orig,
     processLocalImages: mockProcessLocalImages,
-    uploadMediaToDingTalk: vi.fn().mockResolvedValue({
-      mediaId: "@test-media-id",
-      cleanMediaId: "test-media-id",
-      downloadUrl: "https://down.dingtalk.com/media/test-media-id",
-    }),
+    uploadMediaToDingTalk: mockUploadMediaToDingTalk,
   };
 });
 
@@ -145,11 +148,41 @@ describe("sendTextToDingTalk target routing", () => {
 });
 
 describe("sendMediaToDingTalk image strategy", () => {
-  beforeEach(() => {
+  const png1x1 = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  let localPhotoPath = "";
+
+  beforeEach(async () => {
     vi.clearAllMocks();
     mockGetOapiAccessToken.mockResolvedValue("oapi-token");
     mockProcessLocalImages.mockImplementation(async (content: string) => content);
+    mockUploadMediaToDingTalk.mockResolvedValue({
+      mediaId: "@test-media-id",
+      cleanMediaId: "test-media-id",
+      downloadUrl: "https://down.dingtalk.com/media/test-media-id",
+    });
     mockPost.mockResolvedValue({ data: { processQueryKey: "pqk-media" }, status: 200 });
+    // resolveMediaSourceToLocalFile 会 existsSync，必须给真实文件
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    localPhotoPath = path.join(os.tmpdir(), `dingtalk-test-photo-${Date.now()}.png`);
+    fs.writeFileSync(localPhotoPath, png1x1);
+  });
+
+  afterEach(async () => {
+    if (localPhotoPath) {
+      try {
+        const fs = await import("node:fs");
+        fs.unlinkSync(localPhotoPath);
+      } catch {
+        // ignore
+      }
+      localPhotoPath = "";
+    }
+    vi.unstubAllGlobals();
   });
 
   it("默认 messageImageMd=false：文图分开（先 text 再 image）", async () => {
@@ -158,7 +191,7 @@ describe("sendMediaToDingTalk image strategy", () => {
       config,
       target: "user:staff001",
       text: "两张图一起发试试",
-      mediaUrl: "file:///tmp/photo.png",
+      mediaUrl: `file://${localPhotoPath}`,
     });
 
     const batchCalls = mockPost.mock.calls.filter(
@@ -178,7 +211,7 @@ describe("sendMediaToDingTalk image strategy", () => {
       config: { ...config, messageImageMd: true },
       target: "user:staff001",
       text: "见图\n\n![](/tmp/a.png)",
-      mediaUrl: "file:///tmp/photo.png",
+      mediaUrl: `file://${localPhotoPath}`,
     });
 
     const batchCalls = mockPost.mock.calls.filter(
@@ -187,5 +220,69 @@ describe("sendMediaToDingTalk image strategy", () => {
     expect(batchCalls.length).toBe(1);
     const body = batchCalls[0][1] as { msgKey?: string; msgParam?: string };
     expect(body.msgKey).toBe("sampleMarkdown");
+  });
+
+  it("远程 https 无扩展名图床：下载后上传 image，不报「媒体文件上传失败」", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: (k: string) => (k.toLowerCase() === "content-type" ? "image/png" : null) },
+      arrayBuffer: async () =>
+        png1x1.buffer.slice(png1x1.byteOffset, png1x1.byteOffset + png1x1.byteLength),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { sendMediaToDingTalk } = await import("../../src/services/messaging.ts");
+    const res = await sendMediaToDingTalk({
+      config,
+      target: "user:staff001",
+      text: "",
+      mediaUrl: "https://picsum.photos/seed/test/200/200",
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(mockUploadMediaToDingTalk).toHaveBeenCalled();
+    const uploadPath = mockUploadMediaToDingTalk.mock.calls[0]?.[0] as string;
+    expect(uploadPath).toMatch(/dingtalk-remote-.*\.png$/);
+    expect(mockUploadMediaToDingTalk.mock.calls[0]?.[1]).toBe("image");
+    expect(res.ok).toBe(true);
+
+    const batchCalls = mockPost.mock.calls.filter(
+      (c) => typeof c[0] === "string" && String(c[0]).includes("oToMessages"),
+    );
+    const keys = batchCalls.map((c) => (c[1] as { msgKey?: string }).msgKey);
+    expect(keys).toContain("sampleImageMsg");
+    // 不应只发「上传失败」文案
+    const failText = batchCalls.some((c) => {
+      const p = (c[1] as { msgParam?: string }).msgParam || "";
+      return p.includes("媒体文件上传失败");
+    });
+    expect(failText).toBe(false);
+  });
+
+  it("远程 https 下载失败时图片尝试 photoURL 直链兜底", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      headers: { get: () => null },
+      arrayBuffer: async () => new ArrayBuffer(0),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { sendMediaToDingTalk } = await import("../../src/services/messaging.ts");
+    await sendMediaToDingTalk({
+      config,
+      target: "user:staff001",
+      text: "",
+      mediaUrl: "https://example.com/no-such-image-xyz",
+    });
+
+    expect(mockUploadMediaToDingTalk).not.toHaveBeenCalled();
+    const batchCalls = mockPost.mock.calls.filter(
+      (c) => typeof c[0] === "string" && String(c[0]).includes("oToMessages"),
+    );
+    // 应有 image 消息（photoURL 直链）
+    const keys = batchCalls.map((c) => (c[1] as { msgKey?: string }).msgKey);
+    expect(keys).toContain("sampleImageMsg");
   });
 });
