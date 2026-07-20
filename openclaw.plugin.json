@@ -584,7 +584,7 @@
         },
         "channels.dingtalk-connector.cardContentVar": {
           "label": "Card Content Variable",
-          "help": "流式卡内容变量名，默认 msgContent（过程/工具/终稿写入此字段）。",
+          "help": "流式卡内容变量名，默认 content（过程/工具/终稿写入此字段）。",
           "advanced": true
         },
         "channels.dingtalk-connector.answerCard": {
