@@ -132,90 +132,39 @@ message 远程 `media` 下载上传。
 }
 ```
 
-### 完整配置字段（`channels.dingtalk-connector`）
+### 钉钉专属配置字段（`channels.dingtalk-connector`）
 
-源码权威：`src/config/schema.ts` + `openclaw.plugin.json`。  
-**顶层单账号**与 **`accounts.<id>`** 共用同一批「共享字段」；账号级缺省时继承顶层。
+只列**本插件钉钉能力**相关字段（不含渠道通用策略 / 会话隔离 / 日志等）。  
+顶层单账号与 `accounts.<id>` 共用；账号未填则继承顶层。
 
-#### 1. 启用 / 凭证 / 多账号
-
-| 字段 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `enabled` | boolean | — | 是否启用本渠道 |
-| `defaultAccount` | string | — | 默认账号 key；须存在于 `accounts` |
-| `clientId` | string \| number | — | AppKey / Client ID（单账号顶层） |
-| `clientSecret` | string \| SecretRef | — | AppSecret；支持明文或 `{ source, provider, id }` |
-| `accounts` | object | — | 多账号；key 为账号 ID（如 `main-bot`） |
-| `accounts.*.enabled` | boolean | — | 是否启用该账号 |
-| `accounts.*.name` | string | — | 显示名 |
-| `accounts.*.clientId` | string \| number | — | 该账号 Client ID |
-| `accounts.*.clientSecret` | string \| SecretRef | — | 该账号 Secret |
-| `accounts.*.chatbotUserId` | string | — | 机器人加密 ID（群内 @ 其它 bot 用）；见日志 `[BotIdentity] chatbotUserId=...` |
-| `accounts.*.chatbotCorpId` | string | — | 机器人所属 corpId（身份日志） |
-
-#### 2. 访问策略
+#### 凭证与多机器人
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `dmPolicy` | `"open"` \| `"pairing"` \| `"allowlist"` | `"open"` | 单聊策略 |
-| `allowFrom` | (string\|number)[] | — | 单聊白名单；`dmPolicy=allowlist` 时**必填至少 1 项** |
-| `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | `"open"` | 群聊策略 |
-| `groupAllowFrom` | (string\|number)[] | — | 群白名单；`groupPolicy=allowlist` 时**必填至少 1 项** |
-| `requireMention` | boolean | `true` | 群聊是否需 @机器人 才响应 |
-| `groups` | object | — | 按群 ID 覆盖策略（见下表） |
+| `clientId` | string \| number | — | 钉钉应用 AppKey / Client ID |
+| `clientSecret` | string \| SecretRef | — | AppSecret |
+| `accounts` | object | — | 多机器人；key 为账号 ID |
+| `accounts.*.name` | string | — | 账号显示名 |
+| `accounts.*.clientId` / `clientSecret` | — | — | 该机器人凭证 |
+| `accounts.*.chatbotUserId` | string | — | 机器人加密 ID（群内互相 @ 用） |
+| `accounts.*.chatbotCorpId` | string | — | 机器人 corpId |
 
-**`groups.<openConversationId>`：**
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `enabled` | boolean | 该群是否启用 |
-| `requireMention` | boolean | 覆盖全局 @ 要求 |
-| `allowFrom` | (string\|number)[] | 该群发送者白名单 |
-| `systemPrompt` | string | 该群额外 system 提示 |
-| `groupSessionScope` | `"group"` \| `"group_sender"` | 该群会话维度 |
-| `tools.allow` / `tools.deny` | string[] | 该群工具策略 |
-
-#### 3. 会话 / 行为
+#### AI 卡 / 答案卡 / message 工具
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `groupSessionScope` | `"group"` \| `"group_sender"` | `"group"` | 群会话：整群一份 / 群+发送者一份 |
-| `separateSessionByConversation` | boolean | `true` | 按会话隔离 |
-| `sharedMemoryAcrossConversations` | boolean | `false` | 跨会话共享记忆 |
-| `historyLimit` | int ≥0 | — | 历史条数上限 |
-| `textChunkLimit` | int >0 | — | 文本分片上限 |
-| `mediaMaxMb` | number >0 | — | 媒体大小上限（MB） |
-| `typingIndicator` | boolean | — | 输入中指示 |
-| `resolveSenderNames` | boolean | — | 解析发送者昵称 |
-| `asyncMode` | boolean | — | 异步模式 |
-| `ackText` | string | — | 收到消息时的 ACK 文案 |
-| `systemPrompt` | string | — | 渠道级附加 system 提示 |
-| `enableMediaUpload` | boolean | — | 是否启用媒体上传能力 |
-| `endpoint` | string | — | 自定义 DWClient 网关（高级） |
-| `debug` | boolean | — | 调试日志 |
-
-#### 4. 工具
-
-| 字段 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `tools.docs` | boolean | true（语义） | 文档类工具 |
-| `tools.media` | boolean | true（语义） | 媒体上传类工具 |
-
-#### 5. 群回复形态 / AI 卡 / 答案卡 / message 工具
-
-| 字段 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | 群回复形态；`text`/`markdown` 时群聊不用 AI 流式卡（便于多 bot @） |
+| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | 群回复形态；`text`/`markdown` 时群聊不用流式 AI 卡（便于多 bot @） |
 | `cardTemplateId` | string | 官方默认流式模板 | 会话流式 AI Card 模板 ID |
-| `cardContentVar` | string | `"msgContent"` | 流式卡内容变量名（过程/工具/终稿写入此字段） |
-| `answerCard` | boolean | **true**（未配或非 false） | **会话流式**答案卡：长答案另开静态卡，原卡定格「思考完成」 |
-| `answerActToken` | int >0 | **500** | 会话答案卡阈值：估算 token ≤ 此值原卡定稿；> 此值才新建答案卡 |
-| `answerCardTemplateId` | string | 内置答案模板 | 答案静态卡模板 ID（需含内容变量） |
-| `messageAnswerCard` | boolean | **true**（未配或非 false） | **message 工具**正文是否走答案静态卡；`false`=普通 text/markdown。与 `answerCard` **独立**；图/音/视/文件仍普通通道 |
-| `messageImageMd` | boolean | **false** | message 工具图文：`false` 文图分开；`true` 仅多图+文字时合并一条 markdown |
+| `cardContentVar` | string | `"msgContent"` | 流式卡内容变量名 |
+| `answerCard` | boolean | **true** | **会话流式**答案卡：长答案另开静态卡，原卡定格「思考完成」；`false` 关闭 |
+| `answerActToken` | int | **500** | 会话答案卡阈值（token）；≤ 原卡定稿，> 另开答案卡 |
+| `answerCardTemplateId` | string | 内置答案模板 | 答案静态卡模板 ID |
+| `messageAnswerCard` | boolean | **true** | **message 工具**正文是否走答案静态卡；`false`=普通 text/markdown。与 `answerCard` 独立；媒体仍普通通道 |
+| `messageImageMd` | boolean | **false** | message 图文：`false` 文图分开；`true` 多图+文字可合并 markdown |
+| `enableMediaUpload` | boolean | — | 是否启用媒体上传 |
 
-> 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建并发布。  
-> `answerCard` = 对话流式收尾；`messageAnswerCard` = Agent 调 message 工具外发。不要混为一谈。
+> 卡片模板在[钉钉开放平台](https://open.dingtalk.com/)创建发布。  
+> `answerCard` = 对话流式收尾；`messageAnswerCard` = message 工具外发。
 
 ---
 

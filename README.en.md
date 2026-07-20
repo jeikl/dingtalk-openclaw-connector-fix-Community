@@ -98,90 +98,39 @@ Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48
 }
 ```
 
-### Full config reference (`channels.dingtalk-connector`)
+### DingTalk-specific config (`channels.dingtalk-connector`)
 
-Source of truth: `src/config/schema.ts` + `openclaw.plugin.json`.  
-Top-level single-bot fields and `accounts.<id>` share the same **shared shape**; missing account fields inherit top-level.
+Only **this plugin’s DingTalk features** (not generic channel policy / session / logging).  
+Top-level and `accounts.<id>` share these; account overrides inherit when omitted.
 
-#### 1. Enable / credentials / multi-account
+#### Credentials & multi-bot
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | boolean | — | Enable this channel |
-| `defaultAccount` | string | — | Default account key (must exist under `accounts`) |
-| `clientId` | string \| number | — | AppKey / Client ID (single-bot top-level) |
-| `clientSecret` | string \| SecretRef | — | AppSecret; plain string or `{ source, provider, id }` |
+| `clientId` | string \| number | — | DingTalk AppKey / Client ID |
+| `clientSecret` | string \| SecretRef | — | AppSecret |
 | `accounts` | object | — | Multi-bot map; keys are account IDs |
-| `accounts.*.enabled` | boolean | — | Enable this account |
 | `accounts.*.name` | string | — | Display name |
-| `accounts.*.clientId` | string \| number | — | Account Client ID |
-| `accounts.*.clientSecret` | string \| SecretRef | — | Account secret |
-| `accounts.*.chatbotUserId` | string | — | Encrypted bot id for @-mentioning bots in groups (see `[BotIdentity]` logs) |
+| `accounts.*.clientId` / `clientSecret` | — | — | Per-bot credentials |
+| `accounts.*.chatbotUserId` | string | — | Encrypted bot id (for bots @-mentioning each other) |
 | `accounts.*.chatbotCorpId` | string | — | Bot corp id |
 
-#### 2. Access policy
+#### AI card / answer card / message tool
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `dmPolicy` | `"open"` \| `"pairing"` \| `"allowlist"` | `"open"` | DM policy |
-| `allowFrom` | (string\|number)[] | — | DM allowlist; **required (≥1)** when `dmPolicy=allowlist` |
-| `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | `"open"` | Group policy |
-| `groupAllowFrom` | (string\|number)[] | — | Group allowlist; **required (≥1)** when `groupPolicy=allowlist` |
-| `requireMention` | boolean | `true` | Require @bot in groups |
-| `groups` | object | — | Per-group overrides (below) |
-
-**`groups.<openConversationId>`:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Enable this group |
-| `requireMention` | boolean | Override @ requirement |
-| `allowFrom` | (string\|number)[] | Per-group sender allowlist |
-| `systemPrompt` | string | Extra system prompt for this group |
-| `groupSessionScope` | `"group"` \| `"group_sender"` | Session scope for this group |
-| `tools.allow` / `tools.deny` | string[] | Per-group tool policy |
-
-#### 3. Session / behavior
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `groupSessionScope` | `"group"` \| `"group_sender"` | `"group"` | One session per group vs per group+sender |
-| `separateSessionByConversation` | boolean | `true` | Isolate sessions by conversation |
-| `sharedMemoryAcrossConversations` | boolean | `false` | Share memory across conversations |
-| `historyLimit` | int ≥0 | — | History length cap |
-| `textChunkLimit` | int >0 | — | Text chunk size cap |
-| `mediaMaxMb` | number >0 | — | Media size cap (MB) |
-| `typingIndicator` | boolean | — | Typing indicator |
-| `resolveSenderNames` | boolean | — | Resolve sender display names |
-| `asyncMode` | boolean | — | Async mode |
-| `ackText` | string | — | Inbound ACK text |
-| `systemPrompt` | string | — | Channel-level extra system prompt |
-| `enableMediaUpload` | boolean | — | Enable media upload features |
-| `endpoint` | string | — | Custom DWClient gateway (advanced) |
-| `debug` | boolean | — | Debug logging |
-
-#### 4. Tools
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `tools.docs` | boolean | true (semantic) | Document tools |
-| `tools.media` | boolean | true (semantic) | Media upload tools |
-
-#### 5. Group reply / AI card / answer card / message tool
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | Group reply style; `text`/`markdown` disables streaming AI card in groups (multi-bot @) |
+| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | Group reply style; `text`/`markdown` skips streaming AI card (multi-bot @) |
 | `cardTemplateId` | string | official stream template | Streaming AI Card template id |
-| `cardContentVar` | string | `"msgContent"` | Stream card content variable (process/tool/final) |
-| `answerCard` | boolean | **true** (unless `false`) | **Session-stream** answer card: long answers on a static card; original card freezes at “thinking done” |
-| `answerActToken` | int >0 | **500** | Token threshold: ≤ stay on stream card; > spawn answer card |
+| `cardContentVar` | string | `"msgContent"` | Stream card content variable |
+| `answerCard` | boolean | **true** | **Session-stream** answer card; set `false` to disable |
+| `answerActToken` | int | **500** | Token threshold: ≤ finalize on stream card; > open static answer card |
 | `answerCardTemplateId` | string | built-in answer template | Static answer card template id |
-| `messageAnswerCard` | boolean | **true** (unless `false`) | **message tool** body via static answer card; `false` = plain text/markdown. **Independent** of `answerCard`; media still normal APIs |
-| `messageImageMd` | boolean | **false** | message tool layout: `false` text then image; `true` merge multi-image+text markdown |
+| `messageAnswerCard` | boolean | **true** | **message tool** body via answer card; `false` = plain text/markdown. Independent of `answerCard`; media stays on normal APIs |
+| `messageImageMd` | boolean | **false** | message images: `false` text then image; `true` merge multi-image+text markdown |
+| `enableMediaUpload` | boolean | — | Enable media upload |
 
 > Create/publish card templates in [DingTalk Open Platform](https://open.dingtalk.com/).  
-> `answerCard` = conversational stream finalize; `messageAnswerCard` = Agent `message` tool outbound. Do not conflate them.
+> `answerCard` = conversation finalize; `messageAnswerCard` = message-tool outbound.
 
 ---
 

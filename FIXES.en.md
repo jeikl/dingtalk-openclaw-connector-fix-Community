@@ -18,7 +18,7 @@ The message tool (`sendTextToDingTalk` / message body text) now sends via a **st
 - **Independent** of session-stream `answerCard`; media messages stay on normal APIs
 
 Registered in `schema.ts` and `openclaw.plugin.json` (channels / accounts / uiHints).  
-Full field list: `README.md` / `README.en.md` config reference sections.
+DingTalk-only fields: `README.md` / `README.en.md` (no generic channel / logging fields).
 
 Install: `npx -y @jeik/dingtalk-connector install --force`
 

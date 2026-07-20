@@ -44,16 +44,15 @@ openclaw gateway restart
 "messageAnswerCard": false
 ```
 
-### 完整字段表
+### 钉钉专属字段（文档）
 
-见仓库 README「完整配置字段」章节（中文 `README.md` / 英文 `README.en.md`），与 `src/config/schema.ts`、`openclaw.plugin.json` 对齐，含：
+见 README「钉钉专属配置字段」/ README.en「DingTalk-specific config」（不含渠道通用策略与日志字段）：
 
 - 凭证 / `accounts` / `chatbotUserId`
-- `dmPolicy` / `groupPolicy` / `requireMention` / `groups.*`
-- 会话：`groupSessionScope` / `separateSessionByConversation` / …
-- 卡片：`groupReplyMode` / `cardTemplateId` / `cardContentVar`
-- 答案卡：`answerCard` / `answerActToken`（默认 500）/ `answerCardTemplateId`
-- message：`messageAnswerCard`（默认 true）/ `messageImageMd`（默认 false）
+- `groupReplyMode` / `cardTemplateId` / `cardContentVar`
+- `answerCard` / `answerActToken`（默认 500）/ `answerCardTemplateId`
+- `messageAnswerCard`（默认 true）/ `messageImageMd`（默认 false）
+- `enableMediaUpload`
 
 ## 日志
 

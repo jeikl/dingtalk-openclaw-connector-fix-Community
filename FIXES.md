@@ -18,7 +18,7 @@ message 工具（`sendTextToDingTalk` / message 文案）默认用**答案静态
 - 与会话流式 `answerCard` **独立**；媒体消息不走卡
 
 已注册：`schema.ts`、`openclaw.plugin.json`（channels / accounts / uiHints）。  
-完整字段说明见 `README.md`「完整配置字段」与 `README.en.md` Full config reference。
+钉钉专属字段见 `README.md` / `README.en.md`（不含渠道通用与日志字段）。
 
 安装：`npx -y @jeik/dingtalk-connector install --force`
 
