@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix46</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix46.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix47</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix47.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,18 +23,21 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.21-fix46 · 2026-07-20（当前）
+### 🚀 v0.8.21-fix47 · 2026-07-20（当前）
 
-**主题：本地 MD 图灰图诊断日志（逻辑同 fix45）**
+**主题：`file://` 本地图误判远程修复**
 
 | | 改动 |
 |--|------|
-| 🔍 **LocalImage 日志** | message 路径 always-on：扫描 / exists / 上传成败 / residual |
-| 🔍 **MediaIdTrace** | `mdImgs`、`residualLocal`、API前 preview，方便对灰图 |
+| 🐛 **`file://` 灰图** | `![x](file:///mnt/...)` / `file:///root/...` 按本地上传，不再 `fetch failed` |
 
 ```bash
 npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
+
+### 📦 v0.8.21-fix46 · 2026-07-20
+
+本地 MD 图灰图诊断日志（LocalImage / MediaIdTrace）。
 
 ### 📦 v0.8.21-fix45 · 2026-07-20
 
@@ -66,7 +69,7 @@ message 远程 `media` 下载上传。
 | 2026-06-28 | 上线 npm `@jeik/dingtalk-connector`；过程消息提前定稿修复 |
 | 2026-05 | MD 直链/本地图；多轮刷屏；4.29+ 无文本输出；WebSocket 幻影重连 |
 
-完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix46](docs/RELEASE_NOTES_V0.8.21-fix46.md)
+完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix47](docs/RELEASE_NOTES_V0.8.21-fix47.md)
 
 ---
 

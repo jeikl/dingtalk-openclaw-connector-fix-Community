@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix47] - 2026-07-20
+
+### 修复 / Fixed
+- 🐛 **`file://` 本地图被误判为远程** — `looksLikeRemoteUrl` 对含 `://` 一律当远程，导致 `![x](file:///mnt/...)` / `file:///root/...` 走 `fetch` → `fetch failed`，原样发出灰图。现：`file://` / `MEDIA:` / `attachment://` **优先按本地上传**（`toLocalPath` 后 oapi）。  
+  日志特征（fix46）：`kind=http path=file://...` + `远程图下载异常 | fetch failed` + `localTried=0`。
+
+### 安装 / Install
+```bash
+npx -y @jeik/dingtalk-connector install --force
+openclaw gateway restart
+```
+
 ## [0.8.21-fix46] - 2026-07-20
 
 ### 诊断 / Diagnostics

@@ -45,11 +45,26 @@ export const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|gif|bmp|webp|tiff|svg)$/i;
  */
 export const LOCAL_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
-/** 是否像远程 URL 或其截断片段（禁止当本地路径上传） */
+/** 本地文件 URI / OpenClaw 媒体前缀（不是 http 远程） */
+function isLocalFileScheme(p: string): boolean {
+  return (
+    p.startsWith("file://") ||
+    p.startsWith("MEDIA:") ||
+    p.startsWith("attachment://")
+  );
+}
+
+/**
+ * 是否像远程 URL（禁止当本地路径上传）。
+ * **不含** file:// / MEDIA: / attachment://（那些是本地引用）。
+ */
 export function looksLikeRemoteUrl(raw: string): boolean {
   const p = (raw || "").trim();
   if (!p) return false;
+  // 本地 scheme 优先：否则 file:// 会被 includes("://") 误判成远程 → fetch 失败 → 灰图
+  if (isLocalFileScheme(p)) return false;
   if (/^https?:\/\//i.test(p)) return true;
+  // 伪协议截断如 p://（Windows 路径被当 URL 的历史坑）
   if (/^[a-z]:\/\//i.test(p) && !/^[a-z]:[\\/][^/\\]/i.test(p)) return true;
   if (p.includes("://")) return true;
   return false;
@@ -156,12 +171,11 @@ export function protectNonImageOccurrencesOfTargets(
 export function isLocalImageRef(rawPath: string): boolean {
   const p = (rawPath || "").trim();
   if (!p) return false;
+  // file:// / MEDIA: / attachment:// 一律本地（必须先于 looksLikeRemoteUrl）
+  if (isLocalFileScheme(p)) return true;
   // 已是远程 URL 或钉钉 mediaId（@ 开头）→ 不上传
   if (looksLikeRemoteUrl(p) || /^https?:\/\//i.test(p)) return false;
   if (p.startsWith("@") && !p.includes("/") && !p.includes("\\")) return false;
-  if (p.startsWith("file://") || p.startsWith("MEDIA:") || p.startsWith("attachment://")) {
-    return true;
-  }
   // Unix 绝对路径 / Windows 盘符
   if (p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p)) {
     // 有图片后缀，或路径中明显是文件（含扩展名）

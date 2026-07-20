@@ -1,6 +1,6 @@
 {
   "name": "@jeik/dingtalk-connector",
-  "version": "0.8.21-fix46",
+  "version": "0.8.21-fix47",
   "description": "OpenClaw DingTalk channel plugin (fork) | 钉钉 OpenClaw 渠道插件（fork 自官方，含标记/卡片渲染修复）",
   "type": "module",
   "exports": {

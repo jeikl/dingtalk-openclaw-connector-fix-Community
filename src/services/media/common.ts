@@ -28,18 +28,17 @@ export const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|gif|bmp|webp|tiff|svg)$/i;
  */
 export const LOCAL_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
-/** 是否为需上传的本地图引用 */
+/** 是否为需上传的本地图引用（与 media.ts 权威实现一致：file:// 必须算本地） */
 export function isLocalImageRef(rawPath: string): boolean {
   const p = (rawPath || "").trim();
   if (!p) return false;
-  if (/^https?:\/\//i.test(p)) return false;
-  if (p.includes("://") && !p.startsWith("file://") && !p.startsWith("MEDIA:") && !p.startsWith("attachment://")) {
-    return false;
-  }
-  if (p.startsWith("@") && !p.includes("/") && !p.includes("\\")) return false;
+  // file:// 等本地 scheme 优先（勿被 includes("://") 挡掉）
   if (p.startsWith("file://") || p.startsWith("MEDIA:") || p.startsWith("attachment://")) {
     return true;
   }
+  if (/^https?:\/\//i.test(p)) return false;
+  if (p.includes("://")) return false;
+  if (p.startsWith("@") && !p.includes("/") && !p.includes("\\")) return false;
   if (p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p)) {
     if (IMAGE_EXTENSIONS.test(p.split("?")[0] || p)) return true;
     return !p.includes("://");
