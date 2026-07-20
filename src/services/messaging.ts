@@ -677,7 +677,43 @@ export async function sendToGroup(
 }
 
 /**
- * 发送文本消息（用于 outbound 接口）
+ * 解析 outbound target（group:/user:/cid... 前缀）
+ */
+function resolveOutboundTarget(
+  target: string,
+): { type: "user"; userId: string } | { type: "group"; openConversationId: string } {
+  if (target.startsWith("group:")) {
+    return { type: "group", openConversationId: target.slice(6) };
+  }
+  if (target.startsWith("user:")) {
+    return { type: "user", userId: target.slice(5) };
+  }
+  if (target.startsWith("cid")) {
+    return { type: "group", openConversationId: target };
+  }
+  return { type: "user", userId: target };
+}
+
+/**
+ * 是否应按 markdown 发送（含本地/远程图 MD、标题列表等）
+ * message 工具外发路径曾强制 text，导致 ![local](path) 无法渲染。
+ */
+function shouldSendAsMarkdown(text: string): boolean {
+  if (!text || typeof text !== "string") return false;
+  if (/!\[[^\]]*\]\([^)]+\)/.test(text)) return true;
+  if (/^[#*>-]|[*_`#\[\]]/m.test(text) || text.includes("\n")) return true;
+  return false;
+}
+
+function isImageMediaPath(mediaUrl: string): boolean {
+  const base = mediaUrl.split("?")[0]?.split("#")[0] || mediaUrl;
+  const ext = base.toLowerCase().split(".").pop() || "";
+  return ["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext);
+}
+
+/**
+ * 发送文本消息（用于 outbound 接口 / message 工具）
+ * 与 reply 路径对齐：先 processLocalImages，再按内容选择 text/markdown。
  */
 export async function sendTextToDingTalk(params: {
   config: DingtalkConfig;
@@ -685,7 +721,8 @@ export async function sendTextToDingTalk(params: {
   text: string;
   replyToId?: string;
 }): Promise<SendResult> {
-  const { config, target, text, replyToId } = params;
+  const { config, target, replyToId } = params;
+  let { text } = params;
 
   const log = createLoggerFromConfig(config, 'sendTextToDingTalk');
 
@@ -695,26 +732,51 @@ export async function sendTextToDingTalk(params: {
     return { ok: false, error: "Invalid target parameter", usedAICard: false };
   }
 
-  // 判断目标是用户还是群（支持 group:/user: 前缀，与 gateway-methods.ts 逻辑保持一致）
-  let targetParam: { type: "user"; userId: string } | { type: "group"; openConversationId: string };
-  if (target.startsWith("group:")) {
-    targetParam = { type: "group", openConversationId: target.slice(6) };
-  } else if (target.startsWith("user:")) {
-    targetParam = { type: "user", userId: target.slice(5) };
-  } else if (target.startsWith("cid")) {
-    targetParam = { type: "group", openConversationId: target };
-  } else {
-    targetParam = { type: "user", userId: target };
+  const targetParam = resolveOutboundTarget(target);
+
+  // ✅ 与 reply-dispatcher 对齐：上传本地 MD 图片，避免 message 工具灰图
+  // 注意：processLocalImages 内部用 console.log 强制输出诊断，不依赖 debug
+  try {
+    const oapiToken = await getOapiAccessToken(config);
+    console.log(
+      `[DingTalk][LocalImage] sendTextToDingTalk 入口 | target=${target} textLen=${text?.length ?? 0} hasToken=${!!oapiToken}`,
+    );
+    if (oapiToken && text) {
+      const before = text;
+      text = await processLocalImages(text, oapiToken, log);
+      console.log(
+        `[DingTalk][LocalImage] sendTextToDingTalk 处理后 | ${before.length}→${text.length} 字 changed=${before !== text}`,
+      );
+    } else if (text && /!\[[^\]]*\]\((?:file:\/\/|\/)/.test(text)) {
+      console.warn(
+        "[DingTalk][LocalImage] sendTextToDingTalk 正文含本地图但无 oapiToken，跳过上传",
+      );
+    }
+  } catch (err: any) {
+    console.warn(
+      `[DingTalk][LocalImage] sendTextToDingTalk processLocalImages 失败: ${err?.message || err}`,
+    );
   }
 
+  const msgType: DingTalkMsgType = shouldSendAsMarkdown(text) ? "markdown" : "text";
+  console.log(
+    `[DingTalk][LocalImage] sendTextToDingTalk 发送 | msgType=${msgType} useAICard=false`,
+  );
+
+  // message 工具外发：强制普通消息，不用 AI Card（卡片对 mediaId 图渲染不稳定）
   return sendProactive(config, targetParam, text, {
-    msgType: "text",
+    msgType,
     replyToId,
+    useAICard: false,
+    fallbackToNormal: true,
   });
 }
 
 /**
- * 发送媒体消息（用于 outbound 接口）
+ * 发送媒体消息（用于 outbound 接口 / message 工具 mediaUrls）
+ *
+ * 图片：默认文图分开（messageImageMd=false）；仅 messageImageMd=true 且多图+文字时合并 markdown。
+ * 视频/文件/语音：仍分通道发送（先文案再媒体）。
  */
 export async function sendMediaToDingTalk(params: {
   config: DingtalkConfig;
@@ -746,17 +808,7 @@ export async function sendMediaToDingTalk(params: {
     return { ok: false, error: "Invalid target parameter", usedAICard: false };
   }
 
-  // 判断目标是用户还是群（支持 group:/user: 前缀，与 gateway-methods.ts 逻辑保持一致）
-  let targetParam: { type: "user"; userId: string } | { type: "group"; openConversationId: string };
-  if (target.startsWith("group:")) {
-    targetParam = { type: "group", openConversationId: target.slice(6) };
-  } else if (target.startsWith("user:")) {
-    targetParam = { type: "user", userId: target.slice(5) };
-  } else if (target.startsWith("cid")) {
-    targetParam = { type: "group", openConversationId: target };
-  } else {
-    targetParam = { type: "user", userId: target };
-  }
+  const targetParam = resolveOutboundTarget(target);
 
   log.info("参数解析完成，mediaUrl:", mediaUrl, "type:", typeof mediaUrl);
 
@@ -769,17 +821,7 @@ export async function sendMediaToDingTalk(params: {
     });
   }
 
-  // 1. 先发送文本消息（如果有且不为空）
-  // 注意：只有在 text 有实际内容时才发送，避免发送空消息
-  if (text && text.trim().length > 0) {
-    log.info("先发送文本消息:", text);
-    await sendProactive(config, targetParam, text, {
-      msgType: "text",
-      replyToId,
-    });
-  }
-
-  // 2. 上传媒体文件并发送媒体消息
+  // 上传媒体文件并发送
   try {
     log.info("开始获取 oapiToken");
     const oapiToken = await getOapiAccessToken(config);
@@ -787,11 +829,11 @@ export async function sendMediaToDingTalk(params: {
 
     // 根据文件扩展名判断媒体类型
     log.info("开始解析文件扩展名，mediaUrl:", mediaUrl);
-    const ext = mediaUrl.toLowerCase().split(".").pop() || "";
+    const ext = (mediaUrl.split("?")[0] || mediaUrl).toLowerCase().split(".").pop() || "";
     log.info("文件扩展名:", ext);
     let mediaType: "image" | "file" | "video" | "voice" = "file";
 
-    if (["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)) {
+    if (isImageMediaPath(mediaUrl)) {
       mediaType = "image";
     } else if (
       ["mp4", "avi", "mov", "mkv", "flv", "wmv", "webm"].includes(ext)
@@ -848,6 +890,111 @@ export async function sendMediaToDingTalk(params: {
         }
       }
     }
+
+    // —— 图片：默认文图分开；messageImageMd=true 且「文字里已有图 + 当前再带一张」才合并 markdown ——
+    if (mediaType === "image") {
+      let caption = text?.trim() ? text.trim() : "";
+      if (caption) {
+        try {
+          caption = await processLocalImages(caption, oapiToken, log);
+        } catch (err: any) {
+          log.warn(`[sendMediaToDingTalk] 正文 processLocalImages 失败: ${err?.message || err}`);
+        }
+      }
+
+      const uploadResult = await uploadMediaToDingTalk(
+        resolvedMediaUrl,
+        mediaType,
+        oapiToken,
+        maxSize,
+        log,
+      );
+      log.info("uploadMediaToDingTalk 返回结果:", uploadResult);
+
+      if (!uploadResult?.mediaId) {
+        log.error("上传失败，返回错误提示");
+        if (caption) {
+          await sendProactive(config, targetParam, caption, {
+            msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
+            replyToId,
+            useAICard: false,
+            fallbackToNormal: true,
+          });
+        }
+        return sendProactive(config, targetParam, "⚠️ 媒体文件上传失败", {
+          msgType: "text",
+          replyToId,
+          useAICard: false,
+          fallbackToNormal: true,
+        });
+      }
+
+      const mediaId = uploadResult.mediaId;
+      // 正文中已有 markdown 图（mediaId 或其它）+ 本次 media → 视为「多图+文字」
+      const imgsInCaption = (caption.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length;
+      const mergeMd =
+        config.messageImageMd === true && caption.length > 0 && imgsInCaption >= 1;
+
+      console.log(
+        `[DingTalk][LocalImage] sendMedia 图片策略 | messageImageMd=${config.messageImageMd === true} imgsInCaption=${imgsInCaption} mergeMd=${mergeMd}`,
+      );
+
+      if (mergeMd) {
+        const imageMd = `![](${mediaId})`;
+        const combined = `${caption}\n\n${imageMd}`;
+        log.info(
+          `[sendMediaToDingTalk] messageImageMd=true 且多图+文字，合并 markdown（caption=${caption.length}字）`,
+        );
+        const result = await sendProactive(config, targetParam, combined, {
+          msgType: "markdown",
+          replyToId,
+          useAICard: false,
+          fallbackToNormal: true,
+        });
+        return {
+          ...result,
+          processQueryKey: result.processQueryKey || "image-markdown-sent",
+        };
+      }
+
+      // 默认 / 单图图文 / 纯图：先文字（若有），再独立图片消息（阅读体验更好）
+      if (caption) {
+        await sendProactive(config, targetParam, caption, {
+          msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
+          replyToId,
+          useAICard: false,
+          fallbackToNormal: true,
+        });
+      }
+      const result = await sendProactive(config, targetParam, mediaId, {
+        msgType: "image",
+        replyToId,
+        useAICard: false,
+        fallbackToNormal: true,
+      });
+      return {
+        ...result,
+        processQueryKey: result.processQueryKey || "image-message-sent",
+      };
+    }
+
+    // —— 非图片：保留「先文案、后媒体」——
+    if (text && text.trim().length > 0) {
+      let caption = text.trim();
+      try {
+        caption = await processLocalImages(caption, oapiToken, log);
+      } catch {
+        // ignore
+      }
+      log.info("先发送文本消息:", caption.slice(0, 80));
+      await sendProactive(config, targetParam, caption, {
+        msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
+        replyToId,
+        useAICard: false,
+        fallbackToNormal: true,
+      });
+    }
+
     const uploadResult = await uploadMediaToDingTalk(
       resolvedMediaUrl,
       mediaType,
@@ -858,7 +1005,6 @@ export async function sendMediaToDingTalk(params: {
     log.info("uploadMediaToDingTalk 返回结果:", uploadResult);
 
     if (!uploadResult) {
-      // 上传失败，发送文本消息提示
       log.error("上传失败，返回错误提示");
       return sendProactive(config, targetParam, "⚠️ 媒体文件上传失败", {
         msgType: "text",
@@ -866,54 +1012,24 @@ export async function sendMediaToDingTalk(params: {
       });
     }
 
-    // uploadResult 现在是对象，包含 mediaId、cleanMediaId、downloadUrl
     log.info("提取 media_id:", uploadResult.mediaId);
 
-    // 3. 根据媒体类型发送对应的消息
     const fileName = mediaUrl.split("/").pop() || "file";
-
-    if (mediaType === "image") {
-      // 图片消息 - sampleImageMsg 的 photoURL 支持 mediaId 或图片 URL
-      const result = await sendProactive(config, targetParam, uploadResult.mediaId, {
-        msgType: "image",
-        replyToId,
-      });
-      return {
-        ...result,
-        processQueryKey: result.processQueryKey || "image-message-sent",
-      };
-    }
 
     // 对于视频，使用视频标记机制
     if (mediaType === "video") {
-      // 构建视频标记
       const videoMarker = `[DINGTALK_VIDEO]{"path":"${mediaUrl}"}[/DINGTALK_VIDEO]`;
-
-      // 直接处理视频标记（上传并发送视频消息）
       const { processVideoMarkers } = await import("./media");
       await processVideoMarkers(
-        videoMarker, // 只传入标记，不包含原始文本
+        videoMarker,
         "",
         config,
         oapiToken,
         console,
-        true, // useProactiveApi
+        true,
         targetParam,
       );
 
-      // 如果有原始文本，单独发送
-      if (text?.trim()) {
-        const result = await sendProactive(config, targetParam, text, {
-          msgType: "text",
-          replyToId,
-        });
-        return {
-          ...result,
-          processQueryKey: result.processQueryKey || "video-text-sent",
-        };
-      }
-
-      // 视频已发送，返回成功
       return {
         ok: true,
         usedAICard: false,
@@ -923,23 +1039,24 @@ export async function sendMediaToDingTalk(params: {
 
     // 对于音频、文件，发送真正的文件消息
     const fs = await import("fs");
-    const stats = fs.statSync(mediaUrl);
+    const statsPath = toLocalPath(resolvedMediaUrl);
+    if (!fs.existsSync(statsPath)) {
+      return sendProactive(config, targetParam, "⚠️ 媒体文件不存在", {
+        msgType: "text",
+        replyToId,
+      });
+    }
     
-    // 获取文件扩展名作为 fileType
     const fileType = ext || "file";
-    
-    // 构建文件信息（path 字段用于 sendFileProactive 中 fileName 的 fallback）
     const fileInfo = {
-      path: mediaUrl,
+      path: resolvedMediaUrl,
       fileName: fileName,
       fileType: fileType,
     };
 
-    // 使用 sendFileProactive 发送文件消息
     const { sendFileProactive } = await import("./media.ts");
     await sendFileProactive(config, targetParam, fileInfo, uploadResult.mediaId, log);
 
-    // 返回成功结果
     return {
       ok: true,
       usedAICard: false,
@@ -947,7 +1064,6 @@ export async function sendMediaToDingTalk(params: {
     };
   } catch (err: any) {
     log.error("发送媒体消息失败:", err.message);
-    // 发生错误，发送文本消息提示
     return sendProactive(
       config,
       targetParam,

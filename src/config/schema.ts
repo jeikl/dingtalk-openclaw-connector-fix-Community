@@ -84,6 +84,13 @@ const DingtalkSharedConfigShape = {
   debug: z.boolean().optional(), // DWClient debug mode
   enableMediaUpload: z.boolean().optional(),
   systemPrompt: z.string().optional(),
+  /**
+   * message 工具图文发送策略（默认 false）：
+   * - false：文图分开发送（先文字后图片消息），阅读体验更好，不统一塞进一条 markdown
+   * - true：仅当「文字里已有图片 + 再带 media」等多图与文字结合时，合并为一条 markdown；
+   *         单张图文、纯媒体文件仍分开发送
+   */
+  messageImageMd: z.boolean().optional(),
   groupReplyMode: GroupReplyModeSchema,
   /** AI Card 模板 ID，不填则使用官方默认模板 */
   cardTemplateId: z.string().optional(),

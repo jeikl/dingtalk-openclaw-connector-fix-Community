@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 // form-data 是 CJS 模块，静态 import 可确保 jiti/ESM 环境下 CJS 互操作行为稳定，
 // 避免动态 import 时 .default 偶发为 undefined 导致 "Cannot read properties of undefined (reading 'registry')"
@@ -38,13 +39,35 @@ export const TEXT_FILE_EXTENSIONS = new Set([
 /** 图片文件扩展名 */
 export const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|gif|bmp|webp|tiff|svg)$/i;
 
-/** 本地图片路径正则表达式（跨平台） */
-export const LOCAL_IMAGE_RE =
-  /!\[([^\]]*)\]\(((?:file:\/\/\/|MEDIA:|attachment:\/\/\/)[^)]+|\/(?:tmp|var|private|Users|home|root)[^)]+|[A-Za-z]:[\\/][^)]+)\)/g;
+/**
+ * Markdown 图片语法 ![alt](path) — 捕获所有 path，是否本地由 isLocalImageRef 判断。
+ * 注意：旧版只匹配 /tmp|/home|/root 等前缀，**漏掉 /mnt 共享盘**，导致 message 工具 MD 灰图。
+ */
+export const LOCAL_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
-/** 纯文本图片路径正则表达式 */
+/** 纯文本里的绝对本地图片路径（含 /mnt 共享盘） */
 export const BARE_IMAGE_PATH_RE =
-  /`?((?:\/(?:tmp|var|private|Users|home|root)\/[^\s`'",)]+|[A-Za-z]:[\\/][^\s`'",)]+)\.(?:png|jpg|jpeg|gif|bmp|webp))`?/gi;
+  /`?((?:\/(?:tmp|var|private|Users|home|root|mnt|opt|data|Volumes)\/[^\s`'",)]+|[A-Za-z]:[\\/][^\s`'",)]+)\.(?:png|jpg|jpeg|gif|bmp|webp|tiff|svg))`?/gi;
+
+/** 判断 markdown 图片 target 是否为需要上传的本地路径（非 http(s)/mediaId） */
+export function isLocalImageRef(rawPath: string): boolean {
+  const p = (rawPath || "").trim();
+  if (!p) return false;
+  // 已是远程 URL 或钉钉 mediaId（@ 开头）→ 不上传
+  if (/^https?:\/\//i.test(p)) return false;
+  if (p.startsWith("@") && !p.includes("/") && !p.includes("\\")) return false;
+  if (p.startsWith("file://") || p.startsWith("MEDIA:") || p.startsWith("attachment://")) {
+    return true;
+  }
+  // Unix 绝对路径 / Windows 盘符
+  if (p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p)) {
+    // 有图片后缀，或路径中明显是文件（含扩展名）
+    if (IMAGE_EXTENSIONS.test(p.split("?")[0] || p)) return true;
+    // 无扩展名也尝试（部分本地引用）
+    return !p.includes("://");
+  }
+  return false;
+}
 
 /** 视频标记正则表达式 */
 export const VIDEO_MARKER_PATTERN = /\[DINGTALK_VIDEO\](.*?)\[\/DINGTALK_VIDEO\]/gs;
@@ -84,6 +107,47 @@ export interface UploadResult {
   downloadUrl: string;  // 下载链接
 }
 
+/**
+ * 本地图诊断日志：始终打到 stdout（不依赖 config.debug）。
+ * 同时尽量走 log.warn，便于 gateway 文件日志收集。
+ */
+function logLocalImage(log: any, step: string, detail?: string) {
+  const line = detail
+    ? `[DingTalk][LocalImage] ${step} | ${detail}`
+    : `[DingTalk][LocalImage] ${step}`;
+  // 始终可见
+  console.log(line);
+  try {
+    log?.warn?.(line);
+  } catch {
+    // ignore
+  }
+}
+
+/** Markdown 代码区域（围栏 ``` 与行内 `...`），其中的路径不应上传 */
+function getMarkdownCodeRanges(content: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const fenceRe = /```[\s\S]*?```/g;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(content)) !== null) {
+    ranges.push({ start: m.index, end: m.index + m[0].length });
+  }
+  const inlineRe = /`[^`\n]+`/g;
+  while ((m = inlineRe.exec(content)) !== null) {
+    const start = m.index;
+    if (ranges.some((r) => start >= r.start && start < r.end)) continue;
+    ranges.push({ start, end: start + m[0].length });
+  }
+  return ranges;
+}
+
+function isIndexInCodeRange(
+  index: number,
+  ranges: Array<{ start: number; end: number }>,
+): boolean {
+  return ranges.some((r) => index >= r.start && index < r.end);
+}
+
 export async function uploadMediaToDingTalk(
   filePath: string,
   mediaType: 'image' | 'file' | 'video' | 'voice',
@@ -91,27 +155,46 @@ export async function uploadMediaToDingTalk(
   maxSize: number = 20 * 1024 * 1024,
   log?: any,
 ): Promise<UploadResult | null> {
+  const tag = `uploadMedia type=${mediaType}`;
   try {
-    const absPath = toLocalPath(filePath);
-    log?.info?.(`开始上传，文件路径：${absPath}`);
-    
+    let absPath = toLocalPath(filePath);
+    logLocalImage(log, `${tag} 开始`, `path=${absPath}`);
+
     if (!fs.existsSync(absPath)) {
-      log?.warn?.(`文件不存在：${absPath}`);
+      logLocalImage(log, `${tag} 失败:文件不存在`, absPath);
       return null;
+    }
+
+    // SMB/共享盘上 realpath 有时能纠正软链；失败则沿用原路径
+    try {
+      const real = fs.realpathSync(absPath);
+      if (real !== absPath) {
+        logLocalImage(log, `${tag} realpath`, `${absPath} → ${real}`);
+      }
+      absPath = real;
+    } catch (e: any) {
+      logLocalImage(log, `${tag} realpath跳过`, e?.message || String(e));
     }
 
     // 检查文件大小
     const stats = fs.statSync(absPath);
     const fileSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
-    const fileSize = stats.size;
+    logLocalImage(log, `${tag} 文件可读`, `size=${fileSizeMB}MB mode=${stats.mode}`);
 
-    log?.info?.(`文件大小：${fileSizeMB}MB`);
+    // 钉钉 image 类型官方上限约 10MB；调用方若传入更大 limit 也按类型收紧
+    const effectiveMax =
+      mediaType === "image"
+        ? Math.min(maxSize, 10 * 1024 * 1024)
+        : mediaType === "voice"
+          ? Math.min(maxSize, 2 * 1024 * 1024)
+          : maxSize;
 
-    // 检查文件大小是否超过限制
-    if (stats.size > maxSize) {
-      const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(0);
-      log?.warn?.(
-        `文件过大：${absPath}, 大小：${fileSizeMB}MB, 超过限制 ${maxSizeMB}MB`,
+    if (stats.size > effectiveMax) {
+      const maxSizeMB = (effectiveMax / (1024 * 1024)).toFixed(0);
+      logLocalImage(
+        log,
+        `${tag} 失败:文件过大`,
+        `size=${fileSizeMB}MB limit=${maxSizeMB}MB path=${absPath}`,
       );
       return null;
     }
@@ -120,7 +203,10 @@ export async function uploadMediaToDingTalk(
     const getContentType = () => {
       const ext = path.extname(absPath).toLowerCase();
       if (mediaType === 'image') {
-        return ext === '.png' ? 'image/png' : 'image/jpeg';
+        if (ext === '.png') return 'image/png';
+        if (ext === '.gif') return 'image/gif';
+        if (ext === '.webp') return 'image/webp';
+        return 'image/jpeg';
       } else if (mediaType === 'video') {
         return ext === '.mp4' ? 'video/mp4' : 'video/quicktime';
       } else if (mediaType === 'voice') {
@@ -130,15 +216,34 @@ export async function uploadMediaToDingTalk(
       }
     };
 
+    // 中文/特殊字符文件名在部分 multipart 网关会失败：FormData 用 ASCII 安全名，流仍读真实路径
+    const originalBase = path.basename(absPath);
+    const ext = path.extname(absPath) || (mediaType === "image" ? ".jpg" : ".bin");
+    const safeFilename = /^[\w.\-]+$/i.test(originalBase)
+      ? originalBase
+      : `dingtalk-upload-${Date.now()}${ext.toLowerCase()}`;
+    if (safeFilename !== originalBase) {
+      logLocalImage(
+        log,
+        `${tag} 安全文件名`,
+        `${originalBase} → ${safeFilename}`,
+      );
+    }
+
     const form = new FormData();
-    form.append('media', fs.createReadStream(absPath), {
-      filename: path.basename(absPath),
+    form.append("media", fs.createReadStream(absPath), {
+      filename: safeFilename,
       contentType: getContentType(),
     });
 
-    log?.info?.(`上传文件: ${absPath} (${fileSizeMB}MB)`);
+    const uploadType = mediaType === "video" ? "file" : mediaType;
+    logLocalImage(
+      log,
+      `${tag} 请求钉钉OAPI`,
+      `uploadType=${uploadType} formName=${safeFilename} size=${fileSizeMB}MB`,
+    );
     const resp = await dingtalkOapiHttp.post(
-      `${DINGTALK_OAPI}/media/upload?access_token=${oapiToken}&type=${mediaType === 'video' ? 'file' : mediaType}`,
+      `${DINGTALK_OAPI}/media/upload?access_token=${oapiToken}&type=${uploadType}`,
       form,
       { headers: form.getHeaders(), timeout: 60_000 },
     );
@@ -149,75 +254,263 @@ export async function uploadMediaToDingTalk(
       const cleanMediaId = mediaId.startsWith('@') ? mediaId.substring(1) : mediaId;
       // ✅ 将 media_id 转换为钉钉下载链接
       const downloadUrl = `https://down.dingtalk.com/media/${cleanMediaId}`;
-      log?.info?.(`上传成功: media_id=${mediaId}, cleanMediaId=${cleanMediaId}, downloadUrl=${downloadUrl}`);
+      logLocalImage(
+        log,
+        `${tag} 成功`,
+        `mediaId=${mediaId} clean=${cleanMediaId}`,
+      );
       return {
         mediaId,
         cleanMediaId,
         downloadUrl,
       };
     }
-    log?.warn?.(`上传返回无 media_id: ${JSON.stringify(resp.data)}`);
+    const bodyPreview = JSON.stringify(resp.data ?? {}).slice(0, 500);
+    logLocalImage(log, `${tag} 失败:无media_id`, `http=${resp.status} body=${bodyPreview}`);
     return null;
   } catch (err: any) {
-    log?.error?.(`上传失败: ${err.message}`);
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    logLocalImage(
+      log,
+      `${tag} 异常`,
+      `msg=${err?.message || err} status=${status ?? "-"} data=${JSON.stringify(data ?? {}).slice(0, 400)}`,
+    );
     return null;
   }
 }
 
 /**
- * 扫描内容中的本地图片路径，上传到钉钉并替换为 media_id
+ * 本地图片上传（含失败时拷到 /tmp 再传，缓解 SMB/中文路径问题）
+ */
+export async function uploadLocalImageWithFallback(
+  filePath: string,
+  oapiToken: string,
+  log?: any,
+): Promise<UploadResult | null> {
+  const absPath = toLocalPath(filePath);
+  logLocalImage(log, "fallback 入口", `path=${absPath} exists=${fs.existsSync(absPath)}`);
+  if (!fs.existsSync(absPath)) {
+    logLocalImage(log, "fallback 失败:文件不存在", absPath);
+    return null;
+  }
+
+  logLocalImage(log, "fallback 第1次:直接上传", absPath);
+  let result = await uploadMediaToDingTalk(absPath, "image", oapiToken, 10 * 1024 * 1024, log);
+  if (result?.mediaId) {
+    logLocalImage(log, "fallback 第1次成功", result.mediaId);
+    return result;
+  }
+
+  // 直接读共享盘/中文路径失败时：拷贝到本地 tmp 再传
+  const ext = path.extname(absPath) || ".jpg";
+  const tmp = path.join(
+    os.tmpdir(),
+    `dingtalk-img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext.toLowerCase()}`,
+  );
+  try {
+    fs.copyFileSync(absPath, tmp);
+    const tmpSize = fs.statSync(tmp).size;
+    logLocalImage(
+      log,
+      "fallback 第2次:tmp拷贝后上传",
+      `${absPath} → ${tmp} size=${tmpSize}`,
+    );
+    result = await uploadMediaToDingTalk(tmp, "image", oapiToken, 10 * 1024 * 1024, log);
+    if (result?.mediaId) {
+      logLocalImage(log, "fallback 第2次成功", result.mediaId);
+    } else {
+      logLocalImage(log, "fallback 第2次仍失败", tmp);
+    }
+    return result;
+  } catch (err: any) {
+    logLocalImage(
+      log,
+      "fallback 拷贝/重试异常",
+      `${absPath} err=${err?.message || err}`,
+    );
+    return null;
+  } finally {
+    try {
+      if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
+    } catch {
+      // ignore
+    }
+  }
+}
+
+/**
+ * 扫描内容中的本地图片路径，上传到钉钉并替换为 media_id（Markdown 可渲染）
+ *
+ * - 匹配所有 ![]()，本地判定 isLocalImageRef（含 /mnt、中文、& 文件名）
+ * - 上传失败会 /tmp 拷贝重试；仍失败则去掉本地路径（避免钉钉灰图占位）
+ * - 关键步骤始终 console.log（不依赖 debug 开关）
  */
 export async function processLocalImages(
   content: string,
   oapiToken: string | null,
   log?: any,
 ): Promise<string> {
+  logLocalImage(
+    log,
+    "processLocalImages 开始",
+    `contentLen=${content?.length ?? 0} hasToken=${!!oapiToken}`,
+  );
   if (!oapiToken) {
-    log?.warn?.(`无 oapiToken，跳过图片后处理`);
+    logLocalImage(log, "processLocalImages 跳过", "无 oapiToken");
+    return content;
+  }
+  if (!content || typeof content !== "string") {
+    logLocalImage(log, "processLocalImages 跳过", "content 为空");
     return content;
   }
 
-  let result = content;
-
-  // 第一步：匹配 markdown 图片语法 ![alt](path)
-  const mdMatches = [...content.matchAll(LOCAL_IMAGE_RE)];
-  if (mdMatches.length > 0) {
-    log?.info?.(`检测到 ${mdMatches.length} 个 markdown 图片，开始上传...`);
-    for (const match of mdMatches) {
-      const [fullMatch, alt, rawPath] = match;
-      // 清理转义字符（AI 可能会对含空格的路径添加 \ ）
-      const cleanPath = rawPath.replace(/\\ /g, ' ');
-      const uploadResult = await uploadMediaToDingTalk(cleanPath, 'image', oapiToken, 20 * 1024 * 1024, log);
-      if (uploadResult) {
-        result = result.replace(fullMatch, `![${alt}](${uploadResult.downloadUrl})`);
-      }
-    }
+  // 代码块 / 行内 code 中的路径不上传（用户要看参数原文，不能被换成 mediaId）
+  const codeRanges = getMarkdownCodeRanges(content);
+  if (codeRanges.length > 0) {
+    logLocalImage(
+      log,
+      "processLocalImages 代码区域",
+      `count=${codeRanges.length}（围栏/行内 code 内的图路径将跳过）`,
+    );
   }
 
-  // 第二步：匹配纯文本中的本地图片路径
+  // 预览正文中所有 ![]() 便于对照
+  const allMdPreview = [...content.matchAll(LOCAL_IMAGE_RE)].map((m, i) => {
+    const p = (m[2] || "").trim();
+    const inCode = m.index !== undefined && isIndexInCodeRange(m.index, codeRanges);
+    return `#${i + 1} local=${isLocalImageRef(p)} inCode=${inCode} path=${p.slice(0, 120)}`;
+  });
+  logLocalImage(
+    log,
+    "processLocalImages 扫描 ![]()",
+    allMdPreview.length
+      ? allMdPreview.join(" || ")
+      : "正文中没有任何 markdown 图片语法",
+  );
+
+  let result = content;
+
+  // 第一步：匹配 markdown 图片语法 ![alt](path)，仅处理本地路径；跳过 code 内
+  const mdMatches = [...content.matchAll(LOCAL_IMAGE_RE)];
+  const localMd = mdMatches.filter((m) => {
+    if (!isLocalImageRef(m[2] || "")) return false;
+    if (m.index !== undefined && isIndexInCodeRange(m.index, codeRanges)) {
+      logLocalImage(
+        log,
+        "processLocalImages 跳过代码块内图片",
+        (m[2] || "").slice(0, 120),
+      );
+      return false;
+    }
+    return true;
+  });
+  if (localMd.length > 0) {
+    logLocalImage(
+      log,
+      "processLocalImages 待上传本地图",
+      `count=${localMd.length}/${mdMatches.length}`,
+    );
+    for (const match of localMd) {
+      const [fullMatch, alt, rawPath] = match;
+      const cleanPath = rawPath.replace(/\\ /g, " ").trim();
+      const absPath = toLocalPath(cleanPath);
+      logLocalImage(
+        log,
+        "processLocalImages 处理一张",
+        `alt=${alt || "-"} raw=${rawPath} abs=${absPath} exists=${fs.existsSync(absPath)}`,
+      );
+      try {
+        const uploadResult = await uploadLocalImageWithFallback(absPath, oapiToken, log);
+        if (uploadResult?.mediaId) {
+          const replacement = `![${alt || path.basename(absPath)}](${uploadResult.mediaId})`;
+          result = result.split(fullMatch).join(replacement);
+          logLocalImage(
+            log,
+            "processLocalImages 替换成功",
+            `${absPath} → ${uploadResult.mediaId}`,
+          );
+        } else {
+          // 绝不保留 file:/// 或 /mnt 本地路径（钉钉必灰图）
+          const note = `📷 *图片上传失败（${path.basename(absPath)}）*`;
+          result = result.split(fullMatch).join(note);
+          logLocalImage(
+            log,
+            "processLocalImages 替换为失败提示",
+            absPath,
+          );
+        }
+      } catch (err: any) {
+        const note = `📷 *图片上传异常（${path.basename(absPath)}）*`;
+        result = result.split(fullMatch).join(note);
+        logLocalImage(
+          log,
+          "processLocalImages 异常",
+          `${absPath} err=${err?.message || err}`,
+        );
+      }
+    }
+  } else if (mdMatches.length > 0) {
+    logLocalImage(
+      log,
+      "processLocalImages 无本地图可传",
+      `全部 ${mdMatches.length} 个视为远程/非本地`,
+    );
+  } else {
+    logLocalImage(log, "processLocalImages 无 markdown 图片", "无需上传");
+  }
+
+  // 第二步：匹配纯文本中的本地图片路径（仍跳过已在 ![]( 中的）
   const bareMatches = [...result.matchAll(BARE_IMAGE_PATH_RE)];
   const newBareMatches = bareMatches.filter((m) => {
-    // 检查这个路径是否已经在 ![...](...) 中
     if (m.index === undefined) return false;
     const idx = m.index;
     const before = result.slice(Math.max(0, idx - 10), idx);
-    return !before.includes('](');
+    return !before.includes("](");
   });
 
-  if (newBareMatches.length > 0) {
-    log?.info?.(`检测到 ${newBareMatches.length} 个纯文本图片路径，开始上传...`);
-    // 从后往前替换，避免 index 偏移
-    for (const match of newBareMatches.reverse()) {
+  // 纯文本路径同样跳过 code 区域
+  const bareOutsideCode = newBareMatches.filter((m) => {
+    if (m.index === undefined) return true;
+    if (isIndexInCodeRange(m.index, codeRanges)) {
+      logLocalImage(log, "processLocalImages 跳过代码块内纯路径", (m[1] || "").slice(0, 80));
+      return false;
+    }
+    return true;
+  });
+
+  if (bareOutsideCode.length > 0) {
+    logLocalImage(log, "processLocalImages 纯文本路径", `count=${bareOutsideCode.length}`);
+    for (const match of bareOutsideCode.reverse()) {
       const [fullMatch, rawPath] = match;
-      log?.info?.(`纯文本图片: "${fullMatch}" -> path="${rawPath}"`);
-      const uploadResult = await uploadMediaToDingTalk(rawPath, 'image', oapiToken, 20 * 1024 * 1024, log);
-      if (uploadResult) {
-        const replacement = `![](${uploadResult.downloadUrl})`;
-        result = result.slice(0, match.index!) + result.slice(match.index!).replace(fullMatch, replacement);
-        log?.info?.(`替换纯文本路径为图片: ${replacement}`);
+      const absPath = toLocalPath(rawPath.replace(/\\ /g, " ").trim());
+      logLocalImage(log, "processLocalImages 纯文本上传", absPath);
+      try {
+        const uploadResult = await uploadLocalImageWithFallback(absPath, oapiToken, log);
+        if (uploadResult?.mediaId) {
+          const replacement = `![](${uploadResult.mediaId})`;
+          result =
+            result.slice(0, match.index!) +
+            result.slice(match.index!).replace(fullMatch, replacement);
+          logLocalImage(log, "processLocalImages 纯文本替换成功", uploadResult.mediaId);
+        }
+      } catch (err: any) {
+        logLocalImage(log, "processLocalImages 纯文本失败", `${absPath} ${err?.message || err}`);
       }
     }
   }
+
+  // 定稿摘要：是否还残留本地绝对路径
+  const stillLocal = [...result.matchAll(LOCAL_IMAGE_RE)]
+    .filter((m) => isLocalImageRef(m[2] || ""))
+    .map((m) => m[2]);
+  logLocalImage(
+    log,
+    "processLocalImages 结束",
+    stillLocal.length
+      ? `仍残留本地路径 ${stillLocal.length} 个: ${stillLocal.join(" | ")}`
+      : `无残留本地路径 outLen=${result.length}`,
+  );
 
   return result;
 }

@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix31</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix37</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,6 +25,7 @@
 
 | Date | Tag | Update |
 |------|------|--------|
+| 2026-07-20 | 🚀 | **v0.8.21-fix37**: (1) local MD images on any absolute path including **`/mnt`**, Chinese paths + tmp retry; (2) **skip code-block paths** (no accidental mediaId rewrite of samples); (3) **`messageImageMd`** (default false) — message tool keeps text/image separate unless multi-image+text merge; (4) always-on **`[DingTalk][LocalImage]`** diagnostics |
 | 2026-07-14 | 🚀 | **v0.8.21-fix31 stable**: (1) serial stream queue + final stream-cover; (2) `answerActToken` dual-card kept; (3) OpenClaw-aligned error mapping; (4) ACK + tool-first placeholder UX; (5) **install wizard**: accountId derived from clientId (not fixed `apibot`), no duplicate agent bindings; (6) **removed** `cardToolVar`/`cardProcessVar` (tools share `cardContentVar`); (7) repo hygiene |
 | 2026-06-29 | 🐛 | **Fixed answer-card path triggering 500**: `finishAICard` gained a `skipInputingWalk` parameter. The answer-card path (`answerCard` mode) creates a new dedicated static-template card and shouldn't walk through INPUTING — the built-in answer-card template's fields may be incompatible with the streaming template, so `streamAICard`'s INPUTING transition returned 500. Answer-card calls now pass `skipInputingWalk=true` and PUT FINISHED directly; the message-tool path still walks through the `!inputingStarted` guard to preserve the empty-content fix. |
 | 2026-06-29 | 🔧 | **Answer-card threshold default 600 → 500**: most Chinese LLM replies (500-700 chars) routinely crossed the old 600 threshold, so users saw "two cards" too often. Lowered default to reduce that experience. Existing user configs untouched. |

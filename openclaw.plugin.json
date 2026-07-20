@@ -242,6 +242,11 @@
           "debug": {
             "type": "boolean"
           },
+          "messageImageMd": {
+            "type": "boolean",
+            "default": false,
+            "description": "message 工具图文策略：false=文图分开（默认）；true=多图+文字时才合并为 markdown"
+          },
           "groupReplyMode": {
             "type": "string",
             "enum": [
@@ -483,6 +488,11 @@
                 "debug": {
                   "type": "boolean"
                 },
+                "messageImageMd": {
+                  "type": "boolean",
+                  "default": false,
+                  "description": "message 工具图文策略：false=文图分开（默认）；true=多图+文字时才合并为 markdown"
+                },
                 "groupReplyMode": {
                   "type": "string",
                   "enum": [
@@ -540,6 +550,11 @@
         "channels.dingtalk-connector.debug": {
           "label": "Debug Mode",
           "help": "启用调试日志",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.messageImageMd": {
+          "label": "Message Image Markdown Merge",
+          "help": "message 工具图文策略。false（默认）：文字与图片分开发送，阅读体验更好。true：仅当多图与文字结合时合并为一条 markdown；单张图文、纯媒体仍分开。",
           "advanced": true
         },
         "channels.dingtalk-connector.endpoint": {

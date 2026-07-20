@@ -806,11 +806,30 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         ? { type: 'user', userId: senderId }
         : { type: 'group', openConversationId: conversationId };
       
-      log.info(`[DingTalk][closeStreaming] 开始处理媒体文件，target=${JSON.stringify(target)}`);
+      // 始终输出（不依赖 debug），便于排查本地图灰图
+      console.log(
+        `[DingTalk][LocalImage] closeStreaming 开始媒体处理 | target=${JSON.stringify(target)} hasToken=${!!oapiToken} textLen=${finalText.length}`,
+      );
+      // 预览正文中是否含 ![](
+      const mdImgCount = (finalText.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length;
+      console.log(
+        `[DingTalk][LocalImage] closeStreaming 正文 markdown 图数量=${mdImgCount} preview=${JSON.stringify(finalText.slice(0, 200))}`,
+      );
       
       if (oapiToken) {
-        // 处理本地图片
+        // 处理本地图片（含 /mnt 共享盘；失败会 /tmp 重试，避免留下本地路径灰图）
+        // processLocalImages 内部用 [DingTalk][LocalImage] 前缀强制 console 输出全链路
+        const beforeImg = finalText;
         finalText = await processLocalImages(finalText, oapiToken, log);
+        console.log(
+          `[DingTalk][LocalImage] closeStreaming processLocalImages 结束 | ${beforeImg.length}→${finalText.length} changed=${beforeImg !== finalText}`,
+        );
+        // 仍残留本地绝对路径图 → 说明上传失败，打明确日志
+        if (/!\[[^\]]*\]\((?:file:\/\/|\/)[^)]+\)/i.test(finalText)) {
+          console.warn(
+            `[DingTalk][LocalImage] closeStreaming 定稿后仍含本地路径 MD 图，钉钉将灰图。请向上翻 [DingTalk][LocalImage] 上传失败原因`,
+          );
+        }
         
         // ✅ 先处理 Markdown 标记格式的媒体文件
         finalText = await processVideoMarkers(

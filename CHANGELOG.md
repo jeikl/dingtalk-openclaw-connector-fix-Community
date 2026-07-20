@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix37] - 2026-07-20
+
+生产稳定版 / Production-stable community release（本地图 + message 图文策略）。
+
+### 修复 / Fixed
+- 🐛 **MD 本地图灰图（含 `/mnt` 共享盘）** — `processLocalImages` 旧正则只认 `/tmp|/home|/root` 等，**漏掉 `/mnt`**，直接回复与 message 工具 MD 嵌入本地路径不上传 → 钉钉灰图。现匹配全部 `![]()`，用 `isLocalImageRef` 判定本地路径（含中文、`&` 文件名）。  
+  **Local MD image grey icons** — path allowlist missed `/mnt`; fixed matcher + local-path detector.
+- 🐛 **上传失败仍塞本地路径** — 失败时改为上传失败提示，不再把 `/mnt/...` 原文发出去。直传失败会 **拷到 `/tmp` 再传**；FormData 对中文文件名使用 ASCII 安全名。  
+  **No more raw local paths on upload failure** — tmp-copy retry + safe FormData filename.
+- 🐛 **代码块内路径被误上传** — 围栏 ` ``` ` / 行内 `` ` `` 中的路径与 mediaId 示例**不再** `processLocalImages`，避免参数说明被换成 `@mediaId`。  
+  **Skip code blocks** — fenced/inline code image paths are not uploaded.
+
+### 新增 / Added
+- ✨ **`messageImageMd`（默认 `false`）** — message 工具图文策略：  
+  - `false`：文图**分开**（先文字后 `sampleImageMsg`），阅读体验更好；  
+  - `true`：仅当正文里**已有图** + 再带 `media`（多图+文字）时合并一条 markdown；单张图文、纯媒体仍分开。  
+  已注册：`schema.ts`、`openclaw.plugin.json`（含 accounts / uiHints）。  
+  **Config `messageImageMd`** — default separate text/image for message tool; optional merge for multi-image+text.
+- ✨ **本地图诊断日志** — 前缀 `[DingTalk][LocalImage]`，**不依赖 `debug: true`**（`console.log` 强制输出）：匹配/是否 inCode/exists/大小/OAPI 结果/tmp 重试。  
+  **Always-on local-image diagnostics**.
+
+### 变更 / Changed
+- 🔧 message 工具外发默认 `useAICard: false`（普通消息），避免卡片对 mediaId 渲染不稳。  
+  **Message-tool outbound uses normal messages by default**.
+
+### 安装 / Install
+```bash
+npx -y @jeik/dingtalk-connector install --force
+# 或
+openclaw plugins install @jeik/dingtalk-connector --force
+openclaw gateway restart
+```
+
 ## [0.8.21-fix31] - 2026-07-14
 
 生产稳定版 / Production-stable community release.

@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix31</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix37</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix37.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -25,6 +25,7 @@
 
 | 日期 | 标识 | 更新内容 |
 |------|------|---------|
+| 2026-07-20 | 🚀 | **v0.8.21-fix37**：① **MD 本地图**支持 `/mnt` 等任意绝对路径，中文路径 FormData 安全名 + `/tmp` 重试；② **代码块内路径不上传**（参数示例不被换成 mediaId）；③ **`messageImageMd`**（默认 false）message 工具默认文图分开，true 时多图+文字才合并 markdown；④ **`[DingTalk][LocalImage]`** 全链路强制日志（无需 debug） |
 | 2026-07-14 | 🚀 | **v0.8.21-fix31 稳定版**：① 流式串行队列+尾随合并（过程/终态不再半截）；② `answerActToken` 双卡保留；③ OpenClaw 对齐错误中文映射；④ ACK「🦸 正在召唤大模型…」+ 纯工具打头「🤖 大模型已收到需求」；⑤ **安装向导**：accountId 由 clientId 推导（不再写死 apibot）、同 agent 不重复 bindings；⑥ **移除** `cardToolVar`/`cardProcessVar` 配置（工具进度统一写入 `cardContentVar`）；⑦ 仓库清理 |
 | 2026-06-29 | 🐛 | **修复答案卡路径触发 500**：`finishAICard` 新增 `skipInputingWalk` 参数；答案卡（`answerCard` 模式）路径是新建的专用模板静态卡，不应走 INPUTING 过渡——内置答案卡模板字段与原流式卡可能不兼容，`streamAICard` INPUTING 切换时钉钉返回 500。答案卡调用时显式传 `skipInputingWalk=true` 直接 PUT FINISHED；message 工具路径仍走 `!inputingStarted` 守卫保留空内容修复。 |
 | 2026-06-29 | 🔧 | **答案卡触发阈值默认 600 → 500**：多数中文 LLM 实际回复（500-700 字）跨过原 600 阈值更频繁，改默认值减少"两张卡"体验。已有用户配置不动。 |
@@ -47,13 +48,15 @@
 
 ## ✨ 增强功能
 
-- 🔧 Markdown 图片发送支持直链和本地路径，无需下载到本地：
-  - Markdown 语法 `![图片注释](直链URL)` 或 `![图片注释](本地路径)` 直接发送图片
-  - 兼容 mediaId 格式
-  - ⚠️ 本插件支持图文发送，但钉钉侧不会主动触发此功能，需使用以下提示词引导 Agent：
+- 🔧 Markdown 图片发送支持直链和本地路径（含 **`/mnt` 共享盘**、中文路径）：
+  - 语法 `![注释](直链URL)` 或 `![注释](/绝对/本地路径)` → 自动上传 mediaId 后发出
+  - **代码块 / 行内 code 内的路径不会上传**（参数说明原文保留）
+  - 兼容已有 mediaId 格式
+  - message 工具默认**文图分开**；可选 `messageImageMd: true` 在多图+文字时合并 markdown
+  - ⚠️ 需引导 Agent 使用 markdown 发图时可用：
 
     ```
-    请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能：用markdown语法发送图片，支持添加图片注释实现图文并茂；直链图片或本地路径文件均可直接嵌入markdown发送，如本地路径含空格请先重命名去除空格再发送。
+    请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能：用markdown语法发送图片，支持添加图片注释实现图文并茂；直链图片或本地路径文件均可直接嵌入markdown发送，如本地路径含空格请先重命名去除空格再发送。展示工具参数时请放在代码块中，避免被当作待发送图片。
     ```
 
 - 🎨 支持自定义 AI Card 模板，可使用本人预制的卡片（含内容复制按钮），不填则使用官方默认卡片。
@@ -67,7 +70,9 @@
     "clientId": "你的clientId",
     "clientSecret": "你的clientSecret",
     "cardTemplateId": "你的卡片模板ID.schema",
-    "cardContentVar": "content"
+    "cardContentVar": "content",
+    "messageImageMd": false,
+    "debug": false
   }
 }
 ```

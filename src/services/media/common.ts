@@ -22,13 +22,31 @@ export const TEXT_FILE_EXTENSIONS = new Set([
 /** 图片文件扩展名 */
 export const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|gif|bmp|webp|tiff|svg)$/i;
 
-/** 本地图片路径正则表达式（跨平台） */
-export const LOCAL_IMAGE_RE =
-  /!\[([^\]]*)\]\(((?:file:\/\/|MEDIA:|attachment:\/\/)[^)]+|\/(?:tmp|var|private|Users|home|root)[^)]+|[A-Za-z]:[\\/][^)]+)\)/g;
+/**
+ * Markdown 图片 ![alt](path) — 捕获全部 path，本地判定见 isLocalImageRef
+ * （与 services/media.ts 对齐，避免 /mnt 等路径漏匹配）
+ */
+export const LOCAL_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
 /** 纯文本图片路径正则表达式 */
 export const BARE_IMAGE_PATH_RE =
-  /`?((?:\/(?:tmp|var|private|Users|home|root)\/[^\s`'",)]+|[A-Za-z]:[\\/][^\s`'",)]+)\.(?:png|jpg|jpeg|gif|bmp|webp))`?/gi;
+  /`?((?:\/(?:tmp|var|private|Users|home|root|mnt|opt|data|Volumes)\/[^\s`'",)]+|[A-Za-z]:[\\/][^\s`'",)]+)\.(?:png|jpg|jpeg|gif|bmp|webp|tiff|svg))`?/gi;
+
+/** 是否为需上传的本地图引用 */
+export function isLocalImageRef(rawPath: string): boolean {
+  const p = (rawPath || "").trim();
+  if (!p) return false;
+  if (/^https?:\/\//i.test(p)) return false;
+  if (p.startsWith("@") && !p.includes("/") && !p.includes("\\")) return false;
+  if (p.startsWith("file://") || p.startsWith("MEDIA:") || p.startsWith("attachment://")) {
+    return true;
+  }
+  if (p.startsWith("/") || /^[A-Za-z]:[\\/]/.test(p)) {
+    if (IMAGE_EXTENSIONS.test(p.split("?")[0] || p)) return true;
+    return !p.includes("://");
+  }
+  return false;
+}
 
 /** 视频标记正则表达式 */
 export const VIDEO_MARKER_PATTERN = /\[DINGTALK_VIDEO\](.*?)\[\/DINGTALK_VIDEO\]/gs;

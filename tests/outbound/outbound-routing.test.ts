@@ -17,14 +17,32 @@ vi.mock("../../src/utils/http-client.ts", () => ({
 }));
 
 // Mock token — 直接返回 fake token，避免 HTTP 请求
+const mockGetOapiAccessToken = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 vi.mock("../../src/utils/token.ts", async (importOriginal) => {
   const orig = await importOriginal<typeof import("../../src/utils/token.ts")>();
   return {
     ...orig,
     getAccessToken: vi.fn().mockResolvedValue("fake-token"),
-    getOapiAccessToken: vi.fn().mockResolvedValue(null), // media 路径不走
+    getOapiAccessToken: mockGetOapiAccessToken,
     DINGTALK_API: orig.DINGTALK_API,
     DINGTALK_OAPI: orig.DINGTALK_OAPI,
+  };
+});
+
+// processLocalImages：测试可注入「上传后」的 markdown
+const mockProcessLocalImages = vi.hoisted(() =>
+  vi.fn(async (content: string) => content),
+);
+vi.mock("../../src/services/media.ts", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("../../src/services/media.ts")>();
+  return {
+    ...orig,
+    processLocalImages: mockProcessLocalImages,
+    uploadMediaToDingTalk: vi.fn().mockResolvedValue({
+      mediaId: "@test-media-id",
+      cleanMediaId: "test-media-id",
+      downloadUrl: "https://down.dingtalk.com/media/test-media-id",
+    }),
   };
 });
 
@@ -44,6 +62,8 @@ const config = {
 describe("sendTextToDingTalk target routing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetOapiAccessToken.mockResolvedValue(null);
+    mockProcessLocalImages.mockImplementation(async (content: string) => content);
     // 默认 API 调用返回成功
     mockPost.mockResolvedValue({ data: { processQueryKey: "pqk-123" }, status: 200 });
   });
@@ -99,5 +119,73 @@ describe("sendTextToDingTalk target routing", () => {
     // 不应调用单聊 API
     const calls = mockPost.mock.calls.map((c) => c[0]);
     expect(calls.every((url: string) => !url.includes("oToMessages"))).toBe(true);
+  });
+
+  it("含 markdown 图片时使用 sampleMarkdown（避免 text 灰图）", async () => {
+    mockGetOapiAccessToken.mockResolvedValue("oapi-token");
+    mockProcessLocalImages.mockResolvedValue("看图：\n\n![](@media-id-1)");
+
+    const { sendTextToDingTalk } = await import("../../src/services/messaging.ts");
+    await sendTextToDingTalk({
+      config,
+      target: "user:staff001",
+      text: "看图：\n\n![](file:///tmp/a.png)",
+    });
+
+    expect(mockProcessLocalImages).toHaveBeenCalled();
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.stringContaining("/oToMessages/batchSend"),
+      expect.objectContaining({
+        msgKey: "sampleMarkdown",
+        msgParam: expect.stringContaining("media-id-1"),
+      }),
+      expect.anything(),
+    );
+  });
+});
+
+describe("sendMediaToDingTalk image strategy", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetOapiAccessToken.mockResolvedValue("oapi-token");
+    mockProcessLocalImages.mockImplementation(async (content: string) => content);
+    mockPost.mockResolvedValue({ data: { processQueryKey: "pqk-media" }, status: 200 });
+  });
+
+  it("默认 messageImageMd=false：文图分开（先 text 再 image）", async () => {
+    const { sendMediaToDingTalk } = await import("../../src/services/messaging.ts");
+    await sendMediaToDingTalk({
+      config,
+      target: "user:staff001",
+      text: "两张图一起发试试",
+      mediaUrl: "file:///tmp/photo.png",
+    });
+
+    const batchCalls = mockPost.mock.calls.filter(
+      (c) => typeof c[0] === "string" && String(c[0]).includes("oToMessages"),
+    );
+    expect(batchCalls.length).toBeGreaterThanOrEqual(2);
+    const keys = batchCalls.map((c) => (c[1] as { msgKey?: string }).msgKey);
+    expect(keys).toContain("sampleImageMsg");
+    // 第一段为文案
+    expect(keys[0] === "sampleText" || keys[0] === "sampleMarkdown").toBe(true);
+  });
+
+  it("messageImageMd=true 且正文已有图：合并 markdown", async () => {
+    mockProcessLocalImages.mockResolvedValue("见图\n\n![](@existing)");
+    const { sendMediaToDingTalk } = await import("../../src/services/messaging.ts");
+    await sendMediaToDingTalk({
+      config: { ...config, messageImageMd: true },
+      target: "user:staff001",
+      text: "见图\n\n![](/tmp/a.png)",
+      mediaUrl: "file:///tmp/photo.png",
+    });
+
+    const batchCalls = mockPost.mock.calls.filter(
+      (c) => typeof c[0] === "string" && String(c[0]).includes("oToMessages"),
+    );
+    expect(batchCalls.length).toBe(1);
+    const body = batchCalls[0][1] as { msgKey?: string; msgParam?: string };
+    expect(body.msgKey).toBe("sampleMarkdown");
   });
 });
