@@ -101,6 +101,10 @@ Defaults apply: stream card `0d2c84b3-…schema`, session answer card on, messag
 
 ### Maximal config (documented fields only, all default values)
 
+Same as “leave unset”; shown for **single Agent** and **multi Agent**.
+
+**Single Agent (top-level credentials):**
+
 ```json
 "channels": {
   "dingtalk-connector": {
@@ -113,13 +117,37 @@ Defaults apply: stream card `0d2c84b3-…schema`, session answer card on, messag
     "answerActToken": 500,
     "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
     "messageAnswerCard": true,
-    "messageImageMd": false,
+    "messageImageMd": false
+  }
+}
+```
+
+**Multi Agent (`accounts`, one credential/card set per bot):**
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "defaultAccount": "main-bot",
     "accounts": {
       "main-bot": {
         "enabled": true,
         "name": "main-bot",
-        "clientId": "your-clientId",
-        "clientSecret": "your-clientSecret",
+        "clientId": "main-bot-clientId",
+        "clientSecret": "main-bot-clientSecret",
+        "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
+        "cardContentVar": "content",
+        "answerCard": true,
+        "answerActToken": 500,
+        "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
+        "messageAnswerCard": true,
+        "messageImageMd": false
+      },
+      "guide-bot": {
+        "enabled": true,
+        "name": "guide-bot",
+        "clientId": "guide-bot-clientId",
+        "clientSecret": "guide-bot-clientSecret",
         "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
         "cardContentVar": "content",
         "answerCard": true,

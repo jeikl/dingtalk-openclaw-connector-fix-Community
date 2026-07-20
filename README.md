@@ -103,7 +103,9 @@ message 远程 `media` 下载上传。
 
 ### 最大化配置（仅文档字段，值均为默认）
 
-把钉钉专属可选项写全，便于对照；语义与「不配」时一致。
+语义与「不配」时一致；按单 Agent / 多 Agent 两种写法。
+
+**单 Agent（顶层凭证）：**
 
 ```json
 "channels": {
@@ -117,13 +119,37 @@ message 远程 `media` 下载上传。
     "answerActToken": 500,
     "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
     "messageAnswerCard": true,
-    "messageImageMd": false,
+    "messageImageMd": false
+  }
+}
+```
+
+**多 Agent（`accounts`，每个机器人一套凭证与卡片选项）：**
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "defaultAccount": "main-bot",
     "accounts": {
       "main-bot": {
         "enabled": true,
         "name": "主机器人",
-        "clientId": "你的clientId",
-        "clientSecret": "你的clientSecret",
+        "clientId": "主机器人clientId",
+        "clientSecret": "主机器人clientSecret",
+        "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
+        "cardContentVar": "content",
+        "answerCard": true,
+        "answerActToken": 500,
+        "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
+        "messageAnswerCard": true,
+        "messageImageMd": false
+      },
+      "guide-bot": {
+        "enabled": true,
+        "name": "引导机器人",
+        "clientId": "引导机器人clientId",
+        "clientSecret": "引导机器人clientSecret",
         "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
         "cardContentVar": "content",
         "answerCard": true,
