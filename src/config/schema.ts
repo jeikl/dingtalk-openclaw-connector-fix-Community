@@ -91,6 +91,13 @@ const DingtalkSharedConfigShape = {
    *         单张图文、纯媒体文件仍分开发送
    */
   messageImageMd: z.boolean().optional(),
+  /**
+   * message 工具是否用答案卡发送正文（默认 true，显式 false 才关）：
+   * - true / 未配：走答案专用静态卡（answerCardTemplateId 或内置模板），失败降级普通消息
+   * - false：直接普通 text/markdown（旧行为）
+   * 与会话流式的 answerCard 独立；媒体消息（图/音/视/文件）仍走普通通道。
+   */
+  messageAnswerCard: z.boolean().optional(),
   groupReplyMode: GroupReplyModeSchema,
   /** AI Card 模板 ID，不填则使用官方默认模板 */
   cardTemplateId: z.string().optional(),
@@ -100,7 +107,7 @@ const DingtalkSharedConfigShape = {
    *  规避钉钉流式卡 FINISHED 后仍抖动的官方 bug。默认开启（显式设 false 才关）。 */
   answerCard: z.boolean().optional(),
   /** 答案卡触发阈值（token）：最终答案估算 token ≤ 此值时直接在原卡定稿（不另建卡），
-   *  > 此值才新建答案卡。避免简单任务也多一张卡。默认 600。 */
+   *  > 此值才新建答案卡。避免简单任务也多一张卡。默认 500（见 reply-dispatcher）。 */
   answerActToken: z.number().int().positive().optional(),
   /** 答案专用卡模板 ID：不填用内置默认模板。需是钉钉后台已发布、含 content 变量的卡片模板。 */
   answerCardTemplateId: z.string().optional(),

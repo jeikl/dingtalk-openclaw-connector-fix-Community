@@ -5,6 +5,25 @@ This file documents all bug fixes in the community maintained version relative t
 
 ---
 
+## v0.8.21-fix48 (2026-07-21) — message tool answer card by default
+
+### New config `messageAnswerCard` (default `true`)
+
+The message tool (`sendTextToDingTalk` / message body text) now sends via a **static answer card** by default:
+
+- Template: `answerCardTemplateId` or built-in `ANSWER_CARD_TEMPLATE_ID`
+- Finish: `skipInputingWalk=true` (same as closeStreaming answer cards)
+- On failure: falls back to normal text/markdown
+- Disable: `"messageAnswerCard": false`
+- **Independent** of session-stream `answerCard`; media messages stay on normal APIs
+
+Registered in `schema.ts` and `openclaw.plugin.json` (channels / accounts / uiHints).  
+Full field list: `README.md` / `README.en.md` config reference sections.
+
+Install: `npx -y @jeik/dingtalk-connector install --force`
+
+---
+
 ## v0.8.21-fix31 (2026-07-14) — production-stable
 
 Convergence release for **mid-stream integrity**, **final-state integrity**, **readable model errors**, and **first-paint UX**. The `answerActToken` dual-card design is fully preserved.

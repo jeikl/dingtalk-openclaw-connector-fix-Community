@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix47</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix47.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix48</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix48.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,17 +23,23 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.21-fix47 · 2026-07-20（当前）
+### 🚀 v0.8.21-fix48 · 2026-07-21（当前）
 
-**主题：`file://` 本地图误判远程修复**
+**主题：message 工具默认答案卡（可关）**
 
 | | 改动 |
 |--|------|
-| 🐛 **`file://` 灰图** | `![x](file:///mnt/...)` / `file:///root/...` 按本地上传，不再 `fetch failed` |
+| ✨ **`messageAnswerCard`** | **默认 `true`**：message 正文走答案静态卡；`false` 恢复普通 text/markdown |
+| 🔧 **注册** | `schema` + `openclaw.plugin.json`（channels / accounts / uiHints） |
+| 📎 **独立** | 与会话流式 `answerCard` 分开；媒体消息仍普通通道 |
 
 ```bash
 npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
+
+### 📦 v0.8.21-fix47 · 2026-07-20
+
+`file://` 本地图误判远程修复（不再 `fetch failed` 灰图）。
 
 ### 📦 v0.8.21-fix46 · 2026-07-20
 
@@ -49,14 +55,7 @@ message 远程 `media` 下载上传。
 
 ### 📦 v0.8.21-fix37 · 2026-07-20
 
-**主题：本地图（含 `/mnt`）· message 文图策略 · 可观测日志**
-
-| | 改动 |
-|--|------|
-| 📷 **MD 本地图** | 支持任意绝对路径（含 **`/mnt` 共享盘**、中文目录）；上传失败会拷到 `/tmp` 再试 |
-| 📦 **代码块保护** | 围栏 / 行内 code 里的路径**不会上传**，参数示例不会被改成 `mediaId` |
-| ⚙️ **`messageImageMd`** | 默认 `false`：message 工具**文图分开**；`true` 时仅「多图 + 文字」合并为一条 markdown |
-| 🔍 **诊断日志** | 前缀 `[DingTalk][LocalImage]`，**无需开 debug** 也能看到匹配 / 上传 / 失败原因 |
+本地图（含 `/mnt`）· `messageImageMd` · LocalImage 诊断日志。
 
 ---
 
@@ -69,7 +68,7 @@ message 远程 `media` 下载上传。
 | 2026-06-28 | 上线 npm `@jeik/dingtalk-connector`；过程消息提前定稿修复 |
 | 2026-05 | MD 直链/本地图；多轮刷屏；4.29+ 无文本输出；WebSocket 幻影重连 |
 
-完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix47](docs/RELEASE_NOTES_V0.8.21-fix47.md)
+完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48](docs/RELEASE_NOTES_V0.8.21-fix48.md)
 
 ---
 
@@ -99,6 +98,7 @@ message 远程 `media` 下载上传。
     "cardTemplateId": "你的卡片模板ID.schema",
     "cardContentVar": "content",
     "messageImageMd": false,
+    "messageAnswerCard": true,
     "debug": false
   }
 }
@@ -132,21 +132,90 @@ message 远程 `media` 下载上传。
 }
 ```
 
-| 参数 | 说明 |
-|------|------|
-| `clientId` / `clientSecret` | 单机器人模式直接填在顶层 |
-| `accounts` | 多机器人模式，key 为账号标识名（可任意命名） |
-| `accounts.*.enabled` | 是否启用该账号 |
-| `accounts.*.name` | 账号显示名称（仅用于标识） |
-| `accounts.*.clientId` | 钉钉应用 ClientId |
-| `accounts.*.clientSecret` | 钉钉应用 ClientSecret |
-| `cardTemplateId` | AI Card 模板 ID，不填则使用官方默认模板 |
-| `cardContentVar` | 卡片内容变量名，不填默认 `msgContent`（过程/工具/终稿统一写入此字段） |
-| `answerCard` | 答案卡模式开关，**默认开启**；显式设 `false` 关闭 |
-| `answerActToken` | 答案卡触发阈值（token），默认 `500`；最终答案 ≤ 此值直接在原卡定稿，> 此值才另开答案卡 |
-| `answerCardTemplateId` | 答案卡模板 ID，不填用内置默认模板（需含 `content` 变量） |
+### 完整配置字段（`channels.dingtalk-connector`）
 
-> 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建，并添加对应的变量字段。
+源码权威：`src/config/schema.ts` + `openclaw.plugin.json`。  
+**顶层单账号**与 **`accounts.<id>`** 共用同一批「共享字段」；账号级缺省时继承顶层。
+
+#### 1. 启用 / 凭证 / 多账号
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `enabled` | boolean | — | 是否启用本渠道 |
+| `defaultAccount` | string | — | 默认账号 key；须存在于 `accounts` |
+| `clientId` | string \| number | — | AppKey / Client ID（单账号顶层） |
+| `clientSecret` | string \| SecretRef | — | AppSecret；支持明文或 `{ source, provider, id }` |
+| `accounts` | object | — | 多账号；key 为账号 ID（如 `main-bot`） |
+| `accounts.*.enabled` | boolean | — | 是否启用该账号 |
+| `accounts.*.name` | string | — | 显示名 |
+| `accounts.*.clientId` | string \| number | — | 该账号 Client ID |
+| `accounts.*.clientSecret` | string \| SecretRef | — | 该账号 Secret |
+| `accounts.*.chatbotUserId` | string | — | 机器人加密 ID（群内 @ 其它 bot 用）；见日志 `[BotIdentity] chatbotUserId=...` |
+| `accounts.*.chatbotCorpId` | string | — | 机器人所属 corpId（身份日志） |
+
+#### 2. 访问策略
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `dmPolicy` | `"open"` \| `"pairing"` \| `"allowlist"` | `"open"` | 单聊策略 |
+| `allowFrom` | (string\|number)[] | — | 单聊白名单；`dmPolicy=allowlist` 时**必填至少 1 项** |
+| `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | `"open"` | 群聊策略 |
+| `groupAllowFrom` | (string\|number)[] | — | 群白名单；`groupPolicy=allowlist` 时**必填至少 1 项** |
+| `requireMention` | boolean | `true` | 群聊是否需 @机器人 才响应 |
+| `groups` | object | — | 按群 ID 覆盖策略（见下表） |
+
+**`groups.<openConversationId>`：**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `enabled` | boolean | 该群是否启用 |
+| `requireMention` | boolean | 覆盖全局 @ 要求 |
+| `allowFrom` | (string\|number)[] | 该群发送者白名单 |
+| `systemPrompt` | string | 该群额外 system 提示 |
+| `groupSessionScope` | `"group"` \| `"group_sender"` | 该群会话维度 |
+| `tools.allow` / `tools.deny` | string[] | 该群工具策略 |
+
+#### 3. 会话 / 行为
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `groupSessionScope` | `"group"` \| `"group_sender"` | `"group"` | 群会话：整群一份 / 群+发送者一份 |
+| `separateSessionByConversation` | boolean | `true` | 按会话隔离 |
+| `sharedMemoryAcrossConversations` | boolean | `false` | 跨会话共享记忆 |
+| `historyLimit` | int ≥0 | — | 历史条数上限 |
+| `textChunkLimit` | int >0 | — | 文本分片上限 |
+| `mediaMaxMb` | number >0 | — | 媒体大小上限（MB） |
+| `typingIndicator` | boolean | — | 输入中指示 |
+| `resolveSenderNames` | boolean | — | 解析发送者昵称 |
+| `asyncMode` | boolean | — | 异步模式 |
+| `ackText` | string | — | 收到消息时的 ACK 文案 |
+| `systemPrompt` | string | — | 渠道级附加 system 提示 |
+| `enableMediaUpload` | boolean | — | 是否启用媒体上传能力 |
+| `endpoint` | string | — | 自定义 DWClient 网关（高级） |
+| `debug` | boolean | — | 调试日志 |
+
+#### 4. 工具
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `tools.docs` | boolean | true（语义） | 文档类工具 |
+| `tools.media` | boolean | true（语义） | 媒体上传类工具 |
+
+#### 5. 群回复形态 / AI 卡 / 答案卡 / message 工具
+
+| 字段 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | 群回复形态；`text`/`markdown` 时群聊不用 AI 流式卡（便于多 bot @） |
+| `cardTemplateId` | string | 官方默认流式模板 | 会话流式 AI Card 模板 ID |
+| `cardContentVar` | string | `"msgContent"` | 流式卡内容变量名（过程/工具/终稿写入此字段） |
+| `answerCard` | boolean | **true**（未配或非 false） | **会话流式**答案卡：长答案另开静态卡，原卡定格「思考完成」 |
+| `answerActToken` | int >0 | **500** | 会话答案卡阈值：估算 token ≤ 此值原卡定稿；> 此值才新建答案卡 |
+| `answerCardTemplateId` | string | 内置答案模板 | 答案静态卡模板 ID（需含内容变量） |
+| `messageAnswerCard` | boolean | **true**（未配或非 false） | **message 工具**正文是否走答案静态卡；`false`=普通 text/markdown。与 `answerCard` **独立**；图/音/视/文件仍普通通道 |
+| `messageImageMd` | boolean | **false** | message 工具图文：`false` 文图分开；`true` 仅多图+文字时合并一条 markdown |
+
+> 卡片模板需在[钉钉开放平台](https://open.dingtalk.com/)创建并发布。  
+> `answerCard` = 对话流式收尾；`messageAnswerCard` = Agent 调 message 工具外发。不要混为一谈。
 
 ---
 

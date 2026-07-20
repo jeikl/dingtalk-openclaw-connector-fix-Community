@@ -4,7 +4,7 @@
   <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
   Identical to the official release in functionality — only community-critical fixes applied.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix47</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
+  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix48</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,17 +23,23 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.21-fix47 · 2026-07-20 (current)
+### 🚀 v0.8.21-fix48 · 2026-07-21 (current)
 
-**Theme: fix `file://` misclassified as remote URL**
+**Theme: message tool answer card by default (toggle)**
 
 | | Change |
 |--|--------|
-| 🐛 **`file://` grey images** | Treat `file://` / `MEDIA:` / `attachment://` as local upload, not `fetch` |
+| ✨ **`messageAnswerCard`** | **Default `true`**: message body uses static answer card; set `false` for plain text/markdown |
+| 🔧 **Registered** | `schema` + `openclaw.plugin.json` (channels / accounts / uiHints) |
+| 📎 **Independent** | Separate from session-stream `answerCard`; media still uses normal APIs |
 
 ```bash
 npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
+
+### 📦 v0.8.21-fix47 · 2026-07-20
+
+`file://` no longer misclassified as remote (grey-image fix).
 
 ### 📦 v0.8.21-fix46 · 2026-07-20
 
@@ -49,14 +55,7 @@ Remote `media` download-then-upload.
 
 ### 📦 v0.8.21-fix37 · 2026-07-20
 
-**Theme: local images (incl. `/mnt`) · message media layout · diagnostics**
-
-| | Change |
-|--|--------|
-| 📷 **Local MD images** | Any absolute path (incl. **`/mnt`**, Chinese paths); upload retries via `/tmp` copy |
-| 📦 **Code-block safe** | Paths inside fenced/inline code are **not** uploaded (param samples stay literal) |
-| ⚙️ **`messageImageMd`** | Default `false`: message tool sends **text then image** separately; `true` merges only multi-image + text into one markdown |
-| 🔍 **Diagnostics** | Prefix `[DingTalk][LocalImage]` — **no `debug` flag required** |
+Local images (incl. `/mnt`) · `messageImageMd` · LocalImage diagnostics.
 
 ---
 
@@ -69,7 +68,7 @@ Remote `media` download-then-upload.
 | 2026-06-28 | npm `@jeik/dingtalk-connector`; premature finalization fix |
 | 2026-05 | MD images; multi-turn spam; 4.29 empty reply; WS phantom reconnect |
 
-Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix38](docs/RELEASE_NOTES_V0.8.21-fix38.md)
+Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48](docs/RELEASE_NOTES_V0.8.21-fix48.md)
 
 ---
 
@@ -93,20 +92,96 @@ Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix38
     "clientId": "your-clientId",
     "clientSecret": "your-clientSecret",
     "cardTemplateId": "your-card-template-id.schema",
-    "cardContentVar": "content"
+    "cardContentVar": "content",
+    "messageAnswerCard": true
   }
 }
 ```
 
-| Parameter | Description |
-|-----------|-------------|
-| `cardTemplateId` | AI Card template ID, uses official default if not set |
-| `cardContentVar` | Card content variable (process / tool line / final all write here), defaults to `msgContent` |
-| `answerCard` | Answer-card mode switch, **on by default**; set `false` to disable |
-| `answerActToken` | Answer-card trigger threshold (tokens), default `500`; final answer ≤ this stays on the original card, > this opens a separate answer card |
-| `answerCardTemplateId` | Answer-card template ID, uses the built-in default if not set (must contain a `content` variable) |
+### Full config reference (`channels.dingtalk-connector`)
 
-> Card template must be created in [DingTalk Open Platform](https://open.dingtalk.com/) with matching variable fields.
+Source of truth: `src/config/schema.ts` + `openclaw.plugin.json`.  
+Top-level single-bot fields and `accounts.<id>` share the same **shared shape**; missing account fields inherit top-level.
+
+#### 1. Enable / credentials / multi-account
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | boolean | — | Enable this channel |
+| `defaultAccount` | string | — | Default account key (must exist under `accounts`) |
+| `clientId` | string \| number | — | AppKey / Client ID (single-bot top-level) |
+| `clientSecret` | string \| SecretRef | — | AppSecret; plain string or `{ source, provider, id }` |
+| `accounts` | object | — | Multi-bot map; keys are account IDs |
+| `accounts.*.enabled` | boolean | — | Enable this account |
+| `accounts.*.name` | string | — | Display name |
+| `accounts.*.clientId` | string \| number | — | Account Client ID |
+| `accounts.*.clientSecret` | string \| SecretRef | — | Account secret |
+| `accounts.*.chatbotUserId` | string | — | Encrypted bot id for @-mentioning bots in groups (see `[BotIdentity]` logs) |
+| `accounts.*.chatbotCorpId` | string | — | Bot corp id |
+
+#### 2. Access policy
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `dmPolicy` | `"open"` \| `"pairing"` \| `"allowlist"` | `"open"` | DM policy |
+| `allowFrom` | (string\|number)[] | — | DM allowlist; **required (≥1)** when `dmPolicy=allowlist` |
+| `groupPolicy` | `"open"` \| `"allowlist"` \| `"disabled"` | `"open"` | Group policy |
+| `groupAllowFrom` | (string\|number)[] | — | Group allowlist; **required (≥1)** when `groupPolicy=allowlist` |
+| `requireMention` | boolean | `true` | Require @bot in groups |
+| `groups` | object | — | Per-group overrides (below) |
+
+**`groups.<openConversationId>`:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Enable this group |
+| `requireMention` | boolean | Override @ requirement |
+| `allowFrom` | (string\|number)[] | Per-group sender allowlist |
+| `systemPrompt` | string | Extra system prompt for this group |
+| `groupSessionScope` | `"group"` \| `"group_sender"` | Session scope for this group |
+| `tools.allow` / `tools.deny` | string[] | Per-group tool policy |
+
+#### 3. Session / behavior
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `groupSessionScope` | `"group"` \| `"group_sender"` | `"group"` | One session per group vs per group+sender |
+| `separateSessionByConversation` | boolean | `true` | Isolate sessions by conversation |
+| `sharedMemoryAcrossConversations` | boolean | `false` | Share memory across conversations |
+| `historyLimit` | int ≥0 | — | History length cap |
+| `textChunkLimit` | int >0 | — | Text chunk size cap |
+| `mediaMaxMb` | number >0 | — | Media size cap (MB) |
+| `typingIndicator` | boolean | — | Typing indicator |
+| `resolveSenderNames` | boolean | — | Resolve sender display names |
+| `asyncMode` | boolean | — | Async mode |
+| `ackText` | string | — | Inbound ACK text |
+| `systemPrompt` | string | — | Channel-level extra system prompt |
+| `enableMediaUpload` | boolean | — | Enable media upload features |
+| `endpoint` | string | — | Custom DWClient gateway (advanced) |
+| `debug` | boolean | — | Debug logging |
+
+#### 4. Tools
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `tools.docs` | boolean | true (semantic) | Document tools |
+| `tools.media` | boolean | true (semantic) | Media upload tools |
+
+#### 5. Group reply / AI card / answer card / message tool
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | Group reply style; `text`/`markdown` disables streaming AI card in groups (multi-bot @) |
+| `cardTemplateId` | string | official stream template | Streaming AI Card template id |
+| `cardContentVar` | string | `"msgContent"` | Stream card content variable (process/tool/final) |
+| `answerCard` | boolean | **true** (unless `false`) | **Session-stream** answer card: long answers on a static card; original card freezes at “thinking done” |
+| `answerActToken` | int >0 | **500** | Token threshold: ≤ stay on stream card; > spawn answer card |
+| `answerCardTemplateId` | string | built-in answer template | Static answer card template id |
+| `messageAnswerCard` | boolean | **true** (unless `false`) | **message tool** body via static answer card; `false` = plain text/markdown. **Independent** of `answerCard`; media still normal APIs |
+| `messageImageMd` | boolean | **false** | message tool layout: `false` text then image; `true` merge multi-image+text markdown |
+
+> Create/publish card templates in [DingTalk Open Platform](https://open.dingtalk.com/).  
+> `answerCard` = conversational stream finalize; `messageAnswerCard` = Agent `message` tool outbound. Do not conflate them.
 
 ---
 

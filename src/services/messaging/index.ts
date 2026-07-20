@@ -15,4 +15,6 @@ export {
   sendToGroup,
   sendTextToDingTalk,
   sendMediaToDingTalk,
+  isMessageAnswerCardEnabled,
+  messageToolProactiveCardOptions,
 } from '../messaging.ts';

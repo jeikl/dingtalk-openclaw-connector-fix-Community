@@ -53,12 +53,16 @@ vi.mock("../../src/services/media.ts", async (importOriginal) => {
   };
 });
 
-// Mock AI Card 创建，让 sendProactive 走普通消息路径（useAICard: false）
+// Mock AI Card：默认 create 失败 → fallback 普通消息（便于测路由/msgKey）
+const mockCreateAICardForTarget = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockFinishAICard = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 vi.mock("../../src/services/messaging/card.ts", () => ({
-  createAICardForTarget: vi.fn().mockResolvedValue(null), // 返回 null → fallback 到普通消息
-  finishAICard: vi.fn(),
+  createAICardForTarget: mockCreateAICardForTarget,
+  finishAICard: mockFinishAICard,
   streamAICard: vi.fn(),
   updateAICard: vi.fn(),
+  ANSWER_CARD_TEMPLATE_ID: "answer-card-default.schema",
+  DEFAULT_CARD_TEMPLATE_ID: "default-stream.schema",
 }));
 
 const config = {
@@ -129,6 +133,7 @@ describe("sendTextToDingTalk target routing", () => {
   });
 
   it("含 markdown 图片时使用 sampleMarkdown（避免 text 灰图）", async () => {
+    // 本用例测 msgKey：关掉答案卡，避免走 AI Card 而不打 batchSend
     mockGetOapiAccessToken.mockResolvedValue("oapi-token");
     mockProcessImagesForOutbound.mockResolvedValue({
       text: "看图：\n\n![](@media-id-1)",
@@ -137,7 +142,7 @@ describe("sendTextToDingTalk target routing", () => {
 
     const { sendTextToDingTalk } = await import("../../src/services/messaging.ts");
     await sendTextToDingTalk({
-      config,
+      config: { ...config, messageAnswerCard: false },
       target: "user:staff001",
       text: "看图：\n\n![](file:///tmp/a.png)",
     });
@@ -149,6 +154,67 @@ describe("sendTextToDingTalk target routing", () => {
         msgKey: "sampleMarkdown",
         msgParam: expect.stringContaining("media-id-1"),
       }),
+      expect.anything(),
+    );
+  });
+
+  it("默认 messageAnswerCard 开启：走答案卡模板 + skipInputingWalk", async () => {
+    mockCreateAICardForTarget.mockResolvedValueOnce({
+      cardInstanceId: "card_msg_1",
+      accessToken: "tok",
+      tokenExpireTime: Date.now() + 3600_000,
+      inputingStarted: false,
+    });
+    const { sendTextToDingTalk, ANSWER_CARD_TEMPLATE_ID: _ } = await import(
+      "../../src/services/messaging.ts"
+    );
+    const { ANSWER_CARD_TEMPLATE_ID } = await import("../../src/services/messaging/card.ts");
+    const result = await sendTextToDingTalk({
+      config,
+      target: "user:staff001",
+      text: "答案卡正文",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.usedAICard).toBe(true);
+    expect(result.cardInstanceId).toBe("card_msg_1");
+    expect(mockCreateAICardForTarget).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "user", userId: "staff001" }),
+      undefined, // options.log 未传
+      ANSWER_CARD_TEMPLATE_ID,
+    );
+    expect(mockFinishAICard).toHaveBeenCalledWith(
+      expect.objectContaining({ cardInstanceId: "card_msg_1" }),
+      "答案卡正文",
+      expect.anything(),
+      undefined,
+      undefined,
+      true, // skipInputingWalk
+    );
+    // 成功走卡时不应打普通消息 API
+    expect(
+      mockPost.mock.calls.every(
+        (c) => typeof c[0] !== "string" || !String(c[0]).includes("oToMessages"),
+      ),
+    ).toBe(true);
+  });
+
+  it("messageAnswerCard=false：直接普通消息，不建卡", async () => {
+    mockCreateAICardForTarget.mockClear();
+    const { sendTextToDingTalk } = await import("../../src/services/messaging.ts");
+    const result = await sendTextToDingTalk({
+      config: { ...config, messageAnswerCard: false },
+      target: "user:staff001",
+      text: "普通消息",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.usedAICard).toBe(false);
+    expect(mockCreateAICardForTarget).not.toHaveBeenCalled();
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.stringContaining("/oToMessages/batchSend"),
+      expect.anything(),
       expect.anything(),
     );
   });
@@ -193,9 +259,10 @@ describe("sendMediaToDingTalk image strategy", () => {
   });
 
   it("默认 messageImageMd=false：文图分开（先 text 再 image）", async () => {
+    // 关掉答案卡，便于断言 batchSend 的文图 msgKey 顺序
     const { sendMediaToDingTalk } = await import("../../src/services/messaging.ts");
     await sendMediaToDingTalk({
-      config,
+      config: { ...config, messageAnswerCard: false },
       target: "user:staff001",
       text: "两张图一起发试试",
       mediaUrl: `file://${localPhotoPath}`,
@@ -215,7 +282,7 @@ describe("sendMediaToDingTalk image strategy", () => {
     mockProcessLocalImages.mockResolvedValue("见图\n\n![](@existing)");
     const { sendMediaToDingTalk } = await import("../../src/services/messaging.ts");
     await sendMediaToDingTalk({
-      config: { ...config, messageImageMd: true },
+      config: { ...config, messageImageMd: true, messageAnswerCard: false },
       target: "user:staff001",
       text: "见图\n\n![](/tmp/a.png)",
       mediaUrl: `file://${localPhotoPath}`,

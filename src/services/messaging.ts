@@ -22,10 +22,42 @@ import {
   createAICardForTarget,
   streamAICard,
   finishAICard,
+  ANSWER_CARD_TEMPLATE_ID,
   type AICardInstance,
   type AICardTarget,
 } from "./messaging/card.ts";
 import { substituteBotMentions } from "./messaging/mentions.ts";
+
+/**
+ * message 工具是否用答案卡（默认开；显式 false 才关）。
+ * 与会话流式 answerCard 独立。
+ */
+export function isMessageAnswerCardEnabled(config: DingtalkConfig | null | undefined): boolean {
+  return (config as any)?.messageAnswerCard !== false;
+}
+
+/**
+ * message 工具正文发送的卡片选项：答案卡模板 + 静态 FINISHED，失败降级普通消息。
+ */
+export function messageToolProactiveCardOptions(
+  config: DingtalkConfig,
+): Pick<
+  ProactiveSendOptions,
+  "useAICard" | "fallbackToNormal" | "cardTemplateId" | "skipInputingWalk"
+> {
+  if (!isMessageAnswerCardEnabled(config)) {
+    return { useAICard: false, fallbackToNormal: true };
+  }
+  const tpl =
+    (typeof config.answerCardTemplateId === "string" && config.answerCardTemplateId.trim()) ||
+    ANSWER_CARD_TEMPLATE_ID;
+  return {
+    useAICard: true,
+    fallbackToNormal: true,
+    cardTemplateId: tpl,
+    skipInputingWalk: true,
+  };
+}
 
 // ============ 常量 ============
 // 注意：AI Card 相关的类型和函数已移至 ./messaging/card.ts，通过上方 import 引入
@@ -55,6 +87,15 @@ export interface ProactiveSendOptions {
   log?: any;
   useAICard?: boolean;
   fallbackToNormal?: boolean;
+  /**
+   * 覆盖 AI Card / 答案卡模板 ID（如 message 工具答案卡）。
+   * 不传则 createAICardForTarget 用 config.cardTemplateId / 默认流式模板。
+   */
+  cardTemplateId?: string;
+  /**
+   * 答案静态卡：finish 时跳过 INPUTING 过渡，直接 FINISHED（与 closeStreaming 答案卡一致）。
+   */
+  skipInputingWalk?: boolean;
   /**
    * 已在上层 processLocalImages 过则跳过，避免二次处理干扰 MediaIdTrace。
    */
@@ -873,13 +914,21 @@ export async function sendTextToDingTalk(params: {
   }
 
   const msgType: DingTalkMsgType = shouldSendAsMarkdown(text) ? "markdown" : "text";
-  logMediaIdTrace("sendTextToDingTalk:API前", text, `msgType=${msgType}`, true);
+  const cardOpts = messageToolProactiveCardOptions(config);
+  logMediaIdTrace(
+    "sendTextToDingTalk:API前",
+    text,
+    `msgType=${msgType} messageAnswerCard=${isMessageAnswerCardEnabled(config)} useAICard=${cardOpts.useAICard}`,
+    true,
+  );
+  console.log(
+    `[DingTalk][MessageCard] sendTextToDingTalk | messageAnswerCard=${isMessageAnswerCardEnabled(config)} useAICard=${cardOpts.useAICard} tpl=${cardOpts.cardTemplateId || "-"}`,
+  );
 
   return sendProactive(config, targetParam, text, {
     msgType,
     replyToId,
-    useAICard: false,
-    fallbackToNormal: true,
+    ...cardOpts,
     skipProcessLocalImages: true,
   });
 }
@@ -992,8 +1041,7 @@ export async function sendMediaToDingTalk(params: {
         await sendProactive(config, targetParam, text.trim(), {
           msgType: shouldSendAsMarkdown(text) ? "markdown" : "text",
           replyToId,
-          useAICard: false,
-          fallbackToNormal: true,
+          ...messageToolProactiveCardOptions(config),
         });
       }
       // 远程图可再尝试 photoURL 直链（部分环境可用）
@@ -1052,8 +1100,7 @@ export async function sendMediaToDingTalk(params: {
             await sendProactive(config, targetParam, caption, {
               msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
               replyToId,
-              useAICard: false,
-              fallbackToNormal: true,
+              ...messageToolProactiveCardOptions(config),
             });
           }
           if (isRemoteHttpUrl(mediaUrl)) {
@@ -1089,8 +1136,7 @@ export async function sendMediaToDingTalk(params: {
           const result = await sendProactive(config, targetParam, combined, {
             msgType: "markdown",
             replyToId,
-            useAICard: false,
-            fallbackToNormal: true,
+            ...messageToolProactiveCardOptions(config),
           });
           return {
             ...result,
@@ -1102,8 +1148,7 @@ export async function sendMediaToDingTalk(params: {
           await sendProactive(config, targetParam, caption, {
             msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
             replyToId,
-            useAICard: false,
-            fallbackToNormal: true,
+            ...messageToolProactiveCardOptions(config),
           });
         }
         const result = await sendProactive(config, targetParam, mediaId, {
@@ -1130,8 +1175,7 @@ export async function sendMediaToDingTalk(params: {
         await sendProactive(config, targetParam, caption, {
           msgType: shouldSendAsMarkdown(caption) ? "markdown" : "text",
           replyToId,
-          useAICard: false,
-          fallbackToNormal: true,
+          ...messageToolProactiveCardOptions(config),
         });
       }
 
@@ -1321,6 +1365,8 @@ async function sendProactiveInternal(
     msgType = "text",
     useAICard = true,          // 默认启用 AI Card，让主动发送消息优先使用卡片形式
     fallbackToNormal = true,   // 默认降级，AI Card 失败时自动回退到普通消息
+    cardTemplateId,
+    skipInputingWalk = false,
     log: externalLog,
   } = options;
 
@@ -1330,9 +1376,25 @@ async function sendProactiveInternal(
   // 如果启用 AI Card（媒体消息强制跳过）
   if (useAICard && !isMediaMessage) {
     try {
-      const card = await createAICardForTarget(config, target, externalLog);
+      const card = await createAICardForTarget(
+        config,
+        target,
+        externalLog,
+        cardTemplateId,
+      );
       if (card) {
-        await finishAICard(card, content, config, externalLog);
+        // 答案静态卡：skipInputingWalk=true 直接 FINISHED；普通卡仍走 INPUTING 再定稿
+        await finishAICard(
+          card,
+          content,
+          config,
+          externalLog,
+          undefined,
+          skipInputingWalk,
+        );
+        console.log(
+          `[DingTalk][MessageCard] AI Card 发送成功 | outTrack=${card.cardInstanceId} tpl=${cardTemplateId || "default"} skipInputing=${skipInputingWalk}`,
+        );
         return {
           ok: true,
           cardInstanceId: card.cardInstanceId,
@@ -1346,8 +1408,14 @@ async function sendProactiveInternal(
           usedAICard: false,
         };
       }
+      console.warn(
+        `[DingTalk][MessageCard] AI Card 创建失败，fallbackToNormal=${fallbackToNormal}`,
+      );
     } catch (err: any) {
       externalLog?.error?.(`AI Card 发送失败: ${err.message}`);
+      console.warn(
+        `[DingTalk][MessageCard] AI Card 异常: ${err?.message || err}，fallbackToNormal=${fallbackToNormal}`,
+      );
       if (!fallbackToNormal) {
         return { ok: false, error: err.message, usedAICard: false };
       }

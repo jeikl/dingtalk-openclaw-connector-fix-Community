@@ -247,6 +247,11 @@
             "default": false,
             "description": "message 工具图文策略：false=文图分开（默认）；true=多图+文字时才合并为 markdown"
           },
+          "messageAnswerCard": {
+            "type": "boolean",
+            "default": true,
+            "description": "message 工具是否用答案卡发送正文：true（默认）= 答案静态卡；false= 普通 text/markdown。媒体消息仍走普通通道。"
+          },
           "groupReplyMode": {
             "type": "string",
             "enum": [
@@ -493,6 +498,11 @@
                   "default": false,
                   "description": "message 工具图文策略：false=文图分开（默认）；true=多图+文字时才合并为 markdown"
                 },
+                "messageAnswerCard": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "message 工具是否用答案卡发送正文：true（默认）= 答案静态卡；false= 普通 text/markdown。媒体消息仍走普通通道。"
+                },
                 "groupReplyMode": {
                   "type": "string",
                   "enum": [
@@ -555,6 +565,41 @@
         "channels.dingtalk-connector.messageImageMd": {
           "label": "Message Image Markdown Merge",
           "help": "message 工具图文策略。false（默认）：文字与图片分开发送，阅读体验更好。true：仅当多图与文字结合时合并为一条 markdown；单张图文、纯媒体仍分开。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.messageAnswerCard": {
+          "label": "Message Answer Card",
+          "help": "message 工具是否用答案卡发正文。默认开启（答案静态卡，失败降级普通消息）；设为 false 则直接发 text/markdown。与会话流式的 answerCard 独立。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.groupReplyMode": {
+          "label": "Group Reply Mode",
+          "help": "群回复形态：aicard（默认，流式 AI 卡）/ text / markdown。text、markdown 时群聊不用 AI 卡，便于多机器人互相 @。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.cardTemplateId": {
+          "label": "AI Card Template ID",
+          "help": "会话流式 AI Card 模板 ID；不填用官方默认流式模板。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.cardContentVar": {
+          "label": "Card Content Variable",
+          "help": "流式卡内容变量名，默认 msgContent（过程/工具/终稿写入此字段）。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.answerCard": {
+          "label": "Session Answer Card",
+          "help": "会话流式答案卡开关，默认开启。长答案另开静态卡，原卡定格思考完成；显式 false 关闭。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.answerActToken": {
+          "label": "Answer Card Token Threshold",
+          "help": "会话答案卡触发阈值（token），默认 500。≤ 阈值在原卡定稿；> 阈值才新建答案卡。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.answerCardTemplateId": {
+          "label": "Answer Card Template ID",
+          "help": "答案静态卡模板 ID；message 答案卡与会话答案卡共用。不填用内置默认模板。",
           "advanced": true
         },
         "channels.dingtalk-connector.endpoint": {

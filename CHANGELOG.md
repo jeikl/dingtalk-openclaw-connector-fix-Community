@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix48] - 2026-07-21
+
+### 新增 / Added
+- ✨ **`messageAnswerCard`（默认 `true`）** — message 工具正文默认走**答案静态卡**（`answerCardTemplateId` 或内置模板，`skipInputingWalk`）；失败降级普通消息。显式 `false` 关闭。  
+  已注册：`schema.ts`、`openclaw.plugin.json`（channels + accounts + uiHints）。  
+  与会话流式 `answerCard` 独立；图/音/视/文件仍走普通通道。
+
+### 安装 / Install
+```bash
+npx -y @jeik/dingtalk-connector install --force
+openclaw gateway restart
+```
+
 ## [0.8.21-fix47] - 2026-07-20
 
 ### 修复 / Fixed

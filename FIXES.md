@@ -5,6 +5,25 @@
 
 ---
 
+## v0.8.21-fix48（2026-07-21）— message 工具默认答案卡
+
+### 新增配置 `messageAnswerCard`（默认 `true`）
+
+message 工具（`sendTextToDingTalk` / message 文案）默认用**答案静态卡**发送：
+
+- 模板：`answerCardTemplateId` 或内置 `ANSWER_CARD_TEMPLATE_ID`
+- finish：`skipInputingWalk=true`（与 closeStreaming 答案卡一致）
+- 失败：`fallbackToNormal` 降级普通 text/markdown
+- 关闭：`"messageAnswerCard": false`
+- 与会话流式 `answerCard` **独立**；媒体消息不走卡
+
+已注册：`schema.ts`、`openclaw.plugin.json`（channels / accounts / uiHints）。  
+完整字段说明见 `README.md`「完整配置字段」与 `README.en.md` Full config reference。
+
+安装：`npx -y @jeik/dingtalk-connector install --force`
+
+---
+
 ## v0.8.21-fix31（2026-07-14）— 生产稳定版
 
 面向日常钉钉对话的**流式完整性 / 终态完整性 / 错误可读性 / 首响体验**一次收敛。`answerActToken` 双卡机制完整保留。
