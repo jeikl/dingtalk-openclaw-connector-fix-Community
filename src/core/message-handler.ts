@@ -53,6 +53,10 @@ import {
 } from "../services/media/index.ts";
 import { sendProactive, type AICardTarget } from "../services/messaging/index.ts";
 import { createAICardForTarget, streamAICard, registerActiveCard, type AICardInstance } from "../services/messaging/card.ts";
+import {
+  collectCardLookupIds,
+  lookupCardContent,
+} from "../services/messaging/card-content-cache.ts";
 import { QUEUE_BUSY_ACK_PHRASES } from "../utils/constants.ts";
 import { createDingtalkReplyDispatcher } from "../reply-dispatcher.ts";
 import { normalizeSlashCommand } from "../utils/session.ts";
@@ -160,13 +164,94 @@ function resolveContent(data: any): any | null {
 }
 
 /**
+ * 从卡片/未知类型的 content 对象里尽量抠出可读正文。
+ * 钉钉引用 AI Card / interactiveCard 时，正文常不在 .text，而在 cardData / markdown 等字段。
+ */
+function extractTextFromCardLikeContent(contentObj: any, repliedMsg?: any): string {
+  if (!contentObj && !repliedMsg) return '';
+
+  const tryString = (v: unknown): string =>
+    typeof v === 'string' && v.trim() ? v.trim() : '';
+
+  // 直接字段
+  const direct =
+    tryString(contentObj?.text) ||
+    tryString(contentObj?.markdown) ||
+    tryString(contentObj?.msgContent) ||
+    tryString(contentObj?.content) ||
+    tryString(contentObj?.title) ||
+    tryString(contentObj?.summary) ||
+    tryString(repliedMsg?.text) ||
+    tryString(repliedMsg?.markdown);
+  if (direct) return direct;
+
+  // cardData / data / cardParamMap 等嵌套（AI 卡片常见）
+  const nests = [
+    contentObj?.cardData,
+    contentObj?.data,
+    contentObj?.cardParamMap,
+    contentObj?.cardParams,
+    contentObj?.bizData,
+    contentObj?.lastMessage,
+    repliedMsg?.cardData,
+  ].filter(Boolean);
+
+  for (const nest of nests) {
+    if (typeof nest === 'string') {
+      try {
+        const parsed = JSON.parse(nest);
+        const nested = extractTextFromCardLikeContent(parsed);
+        if (nested) return nested;
+      } catch {
+        if (nest.trim().length > 2) return nest.trim();
+      }
+      continue;
+    }
+    if (typeof nest === 'object') {
+      const nested =
+        tryString(nest.text) ||
+        tryString(nest.markdown) ||
+        tryString(nest.msgContent) ||
+        tryString(nest.content) ||
+        tryString(nest.title);
+      if (nested) return nested;
+      // 取最长字符串字段（过滤过短 id）
+      let best = '';
+      for (const v of Object.values(nest)) {
+        if (typeof v === 'string' && v.trim().length > best.length && v.trim().length > 8) {
+          // 跳过纯 mediaId / 链接过短标识
+          if (/^@?[A-Za-z0-9_-]{10,40}$/.test(v.trim())) continue;
+          best = v.trim();
+        }
+      }
+      if (best) return best;
+    }
+  }
+
+  // richText 列表
+  const richList: any[] = contentObj?.richText || contentObj?.richTextList || [];
+  if (Array.isArray(richList) && richList.length) {
+    const parts = richList
+      .map((item: any) => (typeof item?.text === 'string' ? item.text : ''))
+      .filter(Boolean);
+    if (parts.length) return parts.join('');
+  }
+
+  return '';
+}
+
+/**
  * 从消息的内容容器（data.text 或 data.content）中提取引用消息文本，最多递归 maxDepth 层。
  * 对齐 Rust chatbot.rs 的 extract_quoted_msg_text 逻辑。
  *
  * 钉钉引用消息结构：
  * { isReplyMsg: true, repliedMsg: { msgType, content, msgId, senderId } }
  */
-function extractQuotedMsgText(container: any, maxDepth: number): string | null {
+function extractQuotedMsgText(
+  container: any,
+  maxDepth: number,
+  conversationId?: string,
+): string | null {
   if (maxDepth <= 0 || !container) return null;
   if (!container.isReplyMsg) return null;
 
@@ -185,7 +270,10 @@ function extractQuotedMsgText(container: any, maxDepth: number): string | null {
       const parsed = JSON.parse(rawContent);
       if (parsed && typeof parsed === 'object') contentObj = parsed;
     } catch {
-      // 忽略
+      // 纯字符串正文
+      if (rawContent.trim()) {
+        return `[引用] ${rawContent.trim()}`;
+      }
     }
   }
 
@@ -196,7 +284,7 @@ function extractQuotedMsgText(container: any, maxDepth: number): string | null {
       bodyText = contentObj?.text?.trim() || repliedMsg.text?.trim() || '';
       // 嵌套引用：content 中可能还有 isReplyMsg/repliedMsg
       if (contentObj?.isReplyMsg) {
-        const nested = extractQuotedMsgText(contentObj, maxDepth - 1);
+        const nested = extractQuotedMsgText(contentObj, maxDepth - 1, conversationId);
         if (nested) bodyText = bodyText ? `${bodyText}\n${nested}` : nested;
       }
       break;
@@ -207,6 +295,7 @@ function extractQuotedMsgText(container: any, maxDepth: number): string | null {
         .filter((item: any) => item.text && item.msgType !== 'skill' && !item.skillData)
         .map((item: any) => item.text as string);
       bodyText = textParts.join('');
+      if (!bodyText) bodyText = extractTextFromCardLikeContent(contentObj, repliedMsg);
       break;
     }
     case 'picture':
@@ -224,18 +313,109 @@ function extractQuotedMsgText(container: any, maxDepth: number): string | null {
       break;
     }
     case 'markdown':
-      bodyText = contentObj?.text?.trim() || '[markdown消息]';
+      bodyText =
+        contentObj?.text?.trim() ||
+        contentObj?.markdown?.trim() ||
+        extractTextFromCardLikeContent(contentObj, repliedMsg) ||
+        '[markdown消息]';
       break;
-    case 'interactiveCard': {
-      const cardUrl = contentObj?.biz_custom_action_url || repliedMsg.biz_custom_action_url || '';
-      bodyText = cardUrl ? `收到交互式卡片链接：${cardUrl}` : '[interactiveCard消息]';
+    case 'actionCard': {
+      const title = contentObj?.title || contentObj?.text || '';
+      const markdown = contentObj?.markdown || contentObj?.text || '';
+      const sections = [title, markdown].map((s) => String(s || '').trim()).filter(Boolean);
+      bodyText =
+        sections.join('\n') ||
+        extractTextFromCardLikeContent(contentObj, repliedMsg) ||
+        '[actionCard消息]';
       break;
     }
-    default:
-      bodyText = `[${msgType}消息]`;
+    case 'interactiveCard': {
+      const cardUrl =
+        contentObj?.biz_custom_action_url || repliedMsg.biz_custom_action_url || '';
+      let cardText = extractTextFromCardLikeContent(contentObj, repliedMsg);
+
+      // 钉钉引用 AI 卡时常无正文：用我们定稿时缓存的 outTrackId / 会话最近卡 回填
+      if (!cardText) {
+        try {
+          const ids = collectCardLookupIds(repliedMsg, contentObj);
+          cardText =
+            lookupCardContent({
+              ids,
+              conversationId,
+              allowConversationRecent: true,
+            }) || '';
+          if (cardText) {
+            console.log(
+              `[DingTalk][Quote] interactiveCard 已从 CardCache 回填 | ids=${ids.join(',') || '-'} len=${cardText.length}`,
+            );
+          } else {
+            // 强制 dump 载荷，便于确认钉钉到底给了哪些字段
+            const dump = JSON.stringify(repliedMsg ?? {}).slice(0, 800);
+            console.log(
+              `[DingTalk][Quote] interactiveCard 无正文且缓存未命中 | conv=${conversationId || '-'} keys=${Object.keys(contentObj || {}).join(',')} repliedMsg=${dump}`,
+            );
+          }
+        } catch (e: any) {
+          console.warn(`[DingTalk][Quote] CardCache 查找失败: ${e?.message || e}`);
+        }
+      }
+
+      if (cardText) {
+        bodyText = cardUrl ? `${cardText}\n链接：${cardUrl}` : cardText;
+      } else if (cardUrl) {
+        bodyText = `收到交互式卡片链接：${cardUrl}`;
+      } else {
+        const hint =
+          contentObj?.templateId ||
+          contentObj?.cardTemplateId ||
+          contentObj?.outTrackId ||
+          repliedMsg?.msgId ||
+          '';
+        bodyText = hint
+          ? `[卡片消息，引用载荷无正文且本地缓存未命中；id=${String(hint).slice(0, 64)}。请确保机器人定稿后未重启，或改用 message 普通消息便于引用]`
+          : '[卡片消息，引用载荷无正文且本地缓存未命中。钉钉引用 AI 卡通常不带正文，需插件缓存回填]';
+      }
+      break;
+    }
+    default: {
+      bodyText =
+        extractTextFromCardLikeContent(contentObj, repliedMsg) ||
+        `[${msgType}消息]`;
+      // 未知类型也尝试缓存回填（部分环境 msgType 不是 interactiveCard）
+      if (bodyText === `[${msgType}消息]`) {
+        try {
+          const ids = collectCardLookupIds(repliedMsg, contentObj);
+          const cached = lookupCardContent({
+            ids,
+            conversationId,
+            allowConversationRecent: true,
+          });
+          if (cached) {
+            bodyText = cached;
+            console.log(
+              `[DingTalk][Quote] msgType=${msgType} 已从 CardCache 回填 | len=${cached.length}`,
+            );
+          } else {
+            console.log(
+              `[DingTalk][Quote] 未知引用类型 msgType=${msgType} keys=${Object.keys(contentObj || {}).join(',')} dump=${JSON.stringify(repliedMsg ?? {}).slice(0, 600)}`,
+            );
+          }
+        } catch {
+          console.log(
+            `[DingTalk][Quote] 未知引用类型 msgType=${msgType} keys=${Object.keys(contentObj || {}).join(',')}`,
+          );
+        }
+      }
+      break;
+    }
   }
 
   if (!bodyText) return null;
+  // 过长引用截断，避免撑爆上下文
+  const maxLen = 2000;
+  if (bodyText.length > maxLen) {
+    bodyText = bodyText.slice(0, maxLen) + '…';
+  }
   return `[引用] ${bodyText}`;
 }
 
@@ -358,7 +538,7 @@ export function extractMessageContent(data: any): ExtractedMessage {
 
       // 检测引用消息（isReplyMsg + repliedMsg 在 data.text 对象内）
       const hasReply = !!data.text?.isReplyMsg;
-      const quotedText = extractQuotedMsgText(data.text, 3);
+      const quotedText = extractQuotedMsgText(data.text, 3, data.conversationId);
       const text = quotedText ? `${bodyText}\n${quotedText}` : bodyText;
 
       // 提取引用消息中的媒体附件（图片/视频/音频/文件）
@@ -426,7 +606,7 @@ export function extractMessageContent(data: any): ExtractedMessage {
 
       // 检测引用消息（isReplyMsg + repliedMsg 在 content 对象内）
       const hasReply = !!content?.isReplyMsg;
-      const quotedText = extractQuotedMsgText(content, 3);
+      const quotedText = extractQuotedMsgText(content, 3, data.conversationId);
       if (quotedText) textParts.push(quotedText);
 
       const richTextMedia = extractRichTextMediaAttachments(data, content);
@@ -575,7 +755,7 @@ export function extractMessageContent(data: any): ExtractedMessage {
       // 优先从 data.text 取引用容器，取不到再从 content 取
       const replyContainer = data.text || resolveContent(data);
       const bodyText = data.text?.content?.trim() || '';
-      const quotedText = extractQuotedMsgText(replyContainer, 3);
+      const quotedText = extractQuotedMsgText(replyContainer, 3, data.conversationId);
       const text = quotedText ? `${bodyText}\n${quotedText}` : bodyText || '[引用消息]';
 
       // 提取引用中的媒体附件

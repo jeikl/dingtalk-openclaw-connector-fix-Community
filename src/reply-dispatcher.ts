@@ -818,17 +818,23 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
       
       if (oapiToken) {
         // 处理本地图片（含 /mnt 共享盘；失败会 /tmp 重试，避免留下本地路径灰图）
-        // processLocalImages 内部用 [DingTalk][LocalImage] 前缀强制 console 输出全链路
         const beforeImg = finalText;
         finalText = await processLocalImages(finalText, oapiToken, log);
-        console.log(
-          `[DingTalk][LocalImage] closeStreaming processLocalImages 结束 | ${beforeImg.length}→${finalText.length} changed=${beforeImg !== finalText}`,
-        );
-        // 仍残留本地绝对路径图 → 说明上传失败，打明确日志
-        if (/!\[[^\]]*\]\((?:file:\/\/|\/)[^)]+\)/i.test(finalText)) {
-          console.warn(
-            `[DingTalk][LocalImage] closeStreaming 定稿后仍含本地路径 MD 图，钉钉将灰图。请向上翻 [DingTalk][LocalImage] 上传失败原因`,
+        if (beforeImg !== finalText) {
+          console.log(
+            `[DingTalk][LocalImage] closeStreaming 图片处理 | ${beforeImg.length}→${finalText.length}`,
           );
+        }
+        // 仅统计代码块外的本地 ![]——示例 JSON/参数说明里的路径不算灰图风险
+        try {
+          const { hasResidualLocalMdImagesOutsideCode } = await import("./services/media.ts");
+          if (hasResidualLocalMdImagesOutsideCode(finalText)) {
+            console.warn(
+              `[DingTalk][LocalImage] closeStreaming 定稿后仍有代码块外的本地 MD 图未上传，钉钉可能灰图`,
+            );
+          }
+        } catch {
+          // ignore
         }
         
         // ✅ 先处理 Markdown 标记格式的媒体文件
@@ -931,7 +937,15 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         const finalizeOriginalToDone = async () => {
           try {
             await flushCardStream("✅ 思考完成", cardSnapshot as any);
-            await finishAICard(cardSnapshot as any, "✅ 思考完成", account.config as DingtalkConfig, log);
+            await finishAICard(
+              cardSnapshot as any,
+              "✅ 思考完成",
+              account.config as DingtalkConfig,
+              log,
+              undefined,
+              undefined,
+              conversationId,
+            );
           } catch (e: any) {
             log.warn(`[DingTalk][closeStreaming] 原卡定格思考完成失败（忽略）：${e?.message || e}`);
           }
@@ -953,7 +967,15 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           } catch (e: any) {
             log.warn(`[DingTalk][closeStreaming] 原卡终稿 flush 失败（继续 FINISH）：${e?.message || e}`);
           }
-          await finishAICard(cardSnapshot as any, finalText, account.config as DingtalkConfig, log);
+          await finishAICard(
+            cardSnapshot as any,
+            finalText,
+            account.config as DingtalkConfig,
+            log,
+            undefined,
+            undefined,
+            conversationId,
+          );
         } else {
           // 大答案：原卡思考完成 + 新建答案卡投全文（双卡机制，保留）
           log.info(`[DingTalk][closeStreaming] answerCard 模式：答案约 ${answerTokens} token > ${answerActToken}，原卡思考完成 + 新建答案卡（模板=${answerTplId}）`);
@@ -967,7 +989,15 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           );
           if (answerCard) {
             // 静态答案卡：一次性 FINISHED 全文，不走 INPUTING/流式
-            await finishAICard(answerCard, finalText, account.config as DingtalkConfig, log, undefined, /*skipInputingWalk*/ true);
+            await finishAICard(
+              answerCard,
+              finalText,
+              account.config as DingtalkConfig,
+              log,
+              undefined,
+              /*skipInputingWalk*/ true,
+              conversationId,
+            );
             log.info(`[DingTalk][closeStreaming] ✅ 答案卡投放成功`);
           } else {
             // 答案卡建失败 → 降级：全文定稿到原卡，保证用户能看到
@@ -975,7 +1005,15 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
             try {
               await flushCardStream(finalText, cardSnapshot as any);
             } catch { /* ignore */ }
-            await finishAICard(cardSnapshot as any, finalText, account.config as DingtalkConfig, log);
+            await finishAICard(
+              cardSnapshot as any,
+              finalText,
+              account.config as DingtalkConfig,
+              log,
+              undefined,
+              undefined,
+              conversationId,
+            );
           }
         }
       } else {
@@ -989,7 +1027,10 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           cardSnapshot as any,
           finalText,
           account.config as DingtalkConfig,
-          log
+          log,
+          undefined,
+          undefined,
+          conversationId,
         );
       }
       log.info(`[DingTalk][closeStreaming] ✅ AI Card 关闭成功`);

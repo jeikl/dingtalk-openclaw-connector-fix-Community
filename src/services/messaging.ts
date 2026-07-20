@@ -10,6 +10,8 @@ import { MEDIA_MSG_TYPES } from "../utils/constants.ts";
 import { createLoggerFromConfig } from "../utils/logger.ts";
 import {
   processLocalImages,
+  processImagesForOutbound,
+  logMediaIdTrace,
   processVideoMarkers,
   processAudioMarkers,
   processFileMarkers,
@@ -53,6 +55,10 @@ export interface ProactiveSendOptions {
   log?: any;
   useAICard?: boolean;
   fallbackToNormal?: boolean;
+  /**
+   * 已在上层 processLocalImages 过则跳过，避免二次处理干扰 MediaIdTrace。
+   */
+  skipProcessLocalImages?: boolean;
   /**
    * @人 / @机器人 列表。多机器人协作场景下，传入对方机器人的 chatbotUserId（加密 ID）
    * 可在群消息中嵌入 @ 文字。注意：钉钉应用机器人不会因此触发对方的 stream 回调，
@@ -351,17 +357,16 @@ export async function sendNormalToUser(
   content: string,
   options: ProactiveSendOptions = {},
 ): Promise<SendResult> {
-  const { msgType = "text", title, log } = options;
+  const { msgType = "text", title, log, skipProcessLocalImages } = options;
   const userIdArray = Array.isArray(userIds) ? userIds : [userIds];
 
   // ✅ 后处理：上传本地图片到钉钉，替换 markdown 图片语法中的本地路径为 media_id
   let processedContent = content;
-  const oapiToken = await getOapiAccessToken(config);
-  if (oapiToken) {
-    log?.info?.(`[sendNormalToUser] 开始图片后处理`);
-    processedContent = await processLocalImages(content, oapiToken, log);
-  } else {
-    log?.warn?.(`[sendNormalToUser] 无法获取 oapiToken，跳过媒体后处理`);
+  if (!skipProcessLocalImages) {
+    const oapiToken = await getOapiAccessToken(config);
+    if (oapiToken) {
+      processedContent = await processLocalImages(content, oapiToken, log);
+    }
   }
 
   const payload = buildMsgPayload(msgType, processedContent, title);
@@ -429,16 +434,15 @@ export async function sendNormalToGroup(
   content: string,
   options: ProactiveSendOptions = {},
 ): Promise<SendResult> {
-  const { msgType = "text", title, log } = options;
+  const { msgType = "text", title, log, skipProcessLocalImages } = options;
 
   // ✅ 后处理：上传本地图片到钉钉，替换 markdown 图片语法中的本地路径为 media_id
   let processedContent = content;
-  const oapiToken = await getOapiAccessToken(config);
-  if (oapiToken) {
-    log?.info?.(`[sendNormalToGroup] 开始图片后处理`);
-    processedContent = await processLocalImages(content, oapiToken, log);
-  } else {
-    log?.warn?.(`[sendNormalToGroup] 无法获取 oapiToken，跳过媒体后处理`);
+  if (!skipProcessLocalImages) {
+    const oapiToken = await getOapiAccessToken(config);
+    if (oapiToken) {
+      processedContent = await processLocalImages(content, oapiToken, log);
+    }
   }
 
   const payload = buildMsgPayload(msgType, processedContent, title);
@@ -838,41 +842,28 @@ export async function sendTextToDingTalk(params: {
 
   const targetParam = resolveOutboundTarget(target);
 
-  // ✅ 与 reply-dispatcher 对齐：上传本地 MD 图片，避免 message 工具灰图
-  // 注意：processLocalImages 内部用 console.log 强制输出诊断，不依赖 debug
+  // 图片：![] 上传为 mediaId；下载链接原 URL 留在同一条 markdown（不拆消息）
   try {
     const oapiToken = await getOapiAccessToken(config);
-    console.log(
-      `[DingTalk][LocalImage] sendTextToDingTalk 入口 | target=${target} textLen=${text?.length ?? 0} hasToken=${!!oapiToken}`,
-    );
     if (oapiToken && text) {
-      const before = text;
-      text = await processLocalImages(text, oapiToken, log);
-      console.log(
-        `[DingTalk][LocalImage] sendTextToDingTalk 处理后 | ${before.length}→${text.length} 字 changed=${before !== text}`,
-      );
-    } else if (text && /!\[[^\]]*\]\((?:file:\/\/|\/)/.test(text)) {
-      console.warn(
-        "[DingTalk][LocalImage] sendTextToDingTalk 正文含本地图但无 oapiToken，跳过上传",
-      );
+      const processed = await processImagesForOutbound(text, oapiToken, log);
+      text = processed.text;
     }
   } catch (err: any) {
     console.warn(
-      `[DingTalk][LocalImage] sendTextToDingTalk processLocalImages 失败: ${err?.message || err}`,
+      `[DingTalk][LocalImage] sendTextToDingTalk 图片处理失败: ${err?.message || err}`,
     );
   }
 
   const msgType: DingTalkMsgType = shouldSendAsMarkdown(text) ? "markdown" : "text";
-  console.log(
-    `[DingTalk][LocalImage] sendTextToDingTalk 发送 | msgType=${msgType} useAICard=false`,
-  );
+  logMediaIdTrace("sendTextToDingTalk:API前", text, `msgType=${msgType}`);
 
-  // message 工具外发：强制普通消息，不用 AI Card（卡片对 mediaId 图渲染不稳定）
   return sendProactive(config, targetParam, text, {
     msgType,
     replyToId,
     useAICard: false,
     fallbackToNormal: true,
+    skipProcessLocalImages: true,
   });
 }
 
@@ -1378,6 +1369,13 @@ async function sendProactiveInternal(
       log.error("构建消息失败:", payload.error);
       return { ok: false, error: payload.error, usedAICard: false };
     }
+
+    logMediaIdTrace(
+      "API出站",
+      content,
+      `msgKey=${payload.msgKey} type=${msgType}`,
+      true,
+    );
 
     const body: any = {
       robotCode: String(config.clientId),

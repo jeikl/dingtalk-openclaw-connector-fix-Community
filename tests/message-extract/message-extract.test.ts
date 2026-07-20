@@ -202,4 +202,85 @@ describe('extractMessageContent', () => {
       expect(out.atMobiles).toEqual([]);
     });
   });
+
+  describe('引用消息 quoted / repliedMsg', () => {
+    it('引用 text：拼入 [引用] 正文', () => {
+      const out = extractMessageContent({
+        msgtype: 'text',
+        text: {
+          content: '这是啥',
+          isReplyMsg: true,
+          repliedMsg: {
+            msgType: 'text',
+            content: { text: '产品实拍图' },
+          },
+        },
+      });
+      expect(out.text).toContain('这是啥');
+      expect(out.text).toContain('[引用] 产品实拍图');
+    });
+
+    it('引用 interactiveCard：能从 cardData.msgContent 抠出正文', () => {
+      const out = extractMessageContent({
+        msgtype: 'text',
+        text: {
+          content: '总结一下',
+          isReplyMsg: true,
+          repliedMsg: {
+            msgType: 'interactiveCard',
+            content: {
+              cardData: { msgContent: '维萃美AKG时光抗衰 产品说明……' },
+            },
+          },
+        },
+      });
+      expect(out.text).toContain('[引用]');
+      expect(out.text).toContain('维萃美AKG');
+      expect(out.text).not.toBe('总结一下\n[引用] [interactiveCard消息]');
+    });
+
+    it('引用 interactiveCard 无正文时给出明确占位（非空白）', () => {
+      const out = extractMessageContent({
+        msgtype: 'text',
+        text: {
+          content: '？',
+          isReplyMsg: true,
+          repliedMsg: {
+            msgType: 'interactiveCard',
+            msgId: 'msgABC',
+            content: { templateId: 'tpl.schema' },
+          },
+        },
+      });
+      expect(out.text).toContain('[引用]');
+      expect(out.text).toMatch(/卡片消息|缓存未命中/);
+    });
+
+    it('引用 interactiveCard 无正文时，用 CardCache 按会话回填', async () => {
+      const {
+        rememberCardContent,
+        clearCardContentCache,
+      } = await import('../../src/services/messaging/card-content-cache.ts');
+      clearCardContentCache();
+      rememberCardContent({
+        text: '这是刚才 AI 卡里的完整答案正文',
+        outTrackId: 'card_test_123',
+        conversationId: 'cidQuoteTest',
+      });
+      const out = extractMessageContent({
+        msgtype: 'text',
+        conversationId: 'cidQuoteTest',
+        text: {
+          content: '再说一遍',
+          isReplyMsg: true,
+          repliedMsg: {
+            msgType: 'interactiveCard',
+            content: { templateId: 'x.schema' }, // 无正文，靠会话缓存
+          },
+        },
+      });
+      expect(out.text).toContain('这是刚才 AI 卡里的完整答案正文');
+      clearCardContentCache();
+    });
+  });
 });

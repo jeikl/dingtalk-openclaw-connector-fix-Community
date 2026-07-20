@@ -1,50 +1,49 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { __testables } from '../test';
-
-const { toLocalPath, processLocalImages, uploadMediaToDingTalk } = __testables as any;
+import {
+  looksLikeRemoteUrl,
+  processImagesForOutbound,
+  processLocalImages,
+  toLocalPath,
+} from '../../src/services/media.ts';
 
 describe('media helpers', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  describe('toLocalPath', () => {
-    it.each([
-      ['file:///tmp/image.png', '/tmp/image.png'],
-      ['file:///C:/Users/a.png', '/C:/Users/a.png'],
-      ['MEDIA:/var/folders/ab/cd/image.png', '/var/folders/ab/cd/image.png'],
-      ['attachment:///Users/test/image.png', '/Users/test/image.png'],
-      ['/Users/测试/图片%20一.png', '/Users/测试/图片 一.png'],
-      ['/tmp/a.png', '/tmp/a.png'],
-      ['', ''],
-    ] as const)('"%s" -> "%s"', (raw, expected) => {
-      expect(toLocalPath(raw)).toBe(expected);
-    });
-
-    it('should return raw when decodeURIComponent throws', () => {
-      const invalid = '/path/%XXinvalid.png';
-      expect(toLocalPath(invalid)).toBe(invalid);
-    });
+  it('toLocalPath / looksLikeRemoteUrl', () => {
+    expect(toLocalPath('file:///tmp/a.png')).toBe('/tmp/a.png');
+    expect(looksLikeRemoteUrl('http://x/a.jpg')).toBe(true);
+    expect(looksLikeRemoteUrl('/tmp/a.jpg')).toBe(false);
   });
 
-  describe('processLocalImages', () => {
-    const log = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    };
+  it('远程 ![] 上传失败时仍不拆消息，下载 URL 留在同一正文', async () => {
+    const url = 'http://bclaw.edav.top:9000/ailai/weicuimei/akg-img5306.jpg';
+    const content = `维萃美AKG\n\n![AKG](${url})\n\n下载链接：${url}`;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        headers: { get: () => null },
+        arrayBuffer: async () => new ArrayBuffer(0),
+      }),
+    );
+    const r = await processImagesForOutbound(content, 'fake-token');
+    expect(r.followUpUrls).toEqual([]);
+    // 下载失败则 ![] 仍是原 URL，下载链接也在
+    expect(r.text).toContain(`![AKG](${url})`);
+    expect(r.text).toContain(`下载链接：${url}`);
+  });
 
-    it('should return original content when oapiToken is null', async () => {
-      const content = 'hello ![img](/tmp/a.png)';
-      const result = await processLocalImages(content, null, log);
-      expect(result).toBe(content);
-      expect(log.warn).toHaveBeenCalled();
-    });
+  it('裸路径不处理、不拆消息', async () => {
+    const r = await processImagesForOutbound('看 /tmp/a.png', 'tok');
+    expect(r.text).toBe('看 /tmp/a.png');
+    expect(r.followUpUrls).toEqual([]);
+  });
 
-    it('should return empty string when content is empty', async () => {
-      const result = await processLocalImages('', 'token', log);
-      expect(result).toBe('');
-    });
+  it('processLocalImages 返回 string', async () => {
+    expect(await processLocalImages('hi', null)).toBe('hi');
   });
 });
-

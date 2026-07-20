@@ -5,9 +5,11 @@
 - **toLocalPath(raw: string): string**  
   去掉 `file://`、`MEDIA:`、`attachment://` 前缀，再对结果做 `decodeURIComponent`；解码失败则保持原样。
 - **processLocalImages(content, oapiToken, log)**  
-  有 token 时用 LOCAL_IMAGE_RE / BARE_IMAGE_PATH_RE 匹配本地图片，上传后替换为 media_id；无 token 直接返回 content 并打 warn。
+  **只**处理明确的 `![](local)`（代码块内跳过）；**不**扫裸路径。  
+  同一 `![]` target 在正文其它位置再出现 → `protectNonImageOccurrencesOfTargets`。  
+  无 token 直接返回 content。
 - **uploadMediaToDingTalk**  
-  依赖 fs/axios，单元测试仅覆盖 toLocalPath 与 processLocalImages 控制流；I/O 在集成测试补充。
+  依赖 fs/axios；单元测试覆盖 toLocalPath / processLocalImages 控制流。
 
 ## 2. toLocalPath 用例表（覆盖核心分支）
 

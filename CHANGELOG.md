@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.21-fix45] - 2026-07-20
+
+生产稳定版 / Production-stable community release。
+
+### 修复 / Fixed
+- 🐛 **message 图 + 下载链接被改成 mediaId** — 钉钉 `sampleMarkdown` 在「`![](http)` 与正文同一 URL」时会把下载位改写成 `@lADP…`。现：`![](http)` **下载上传 → mediaId**；**下载链接原 URL 留在同一条消息**（不拆第二条气泡）。  
+- 🐛 **只处理明确 `![]()`** — 删除裸路径自动扫描（与代码块误转 mediaId 同类根因）。  
+- 🐛 **closeStreaming 误报「仍含本地路径 MD 图」** — 代码块/示例 JSON 里的 `/tmp/...` 不再告警。  
+- 🐛 **引用 AI 卡片无正文** — 定稿缓存 `outTrackId → 正文`，引用时按会话回填（`CardCache`）。  
+- 🐛 **message `media=https://...`** — 远程 media 先下载再上传（fix38）。  
+
+### 日志 / Logs
+- 精简 `[DingTalk][LocalImage]` / `[MediaIdTrace]`（去掉双前缀刷屏，保留 API 前关键行）。
+
+### 安装 / Install
+```bash
+npx -y @jeik/dingtalk-connector install --force
+openclaw gateway restart
+```
+
+### 从 fix38～fix44 升级
+直接 `--force` 装 fix45 即可，包含上述全部修复。
+
 ## [0.8.21-fix38] - 2026-07-20
 
 ### 修复 / Fixed

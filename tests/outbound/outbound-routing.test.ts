@@ -29,7 +29,10 @@ vi.mock("../../src/utils/token.ts", async (importOriginal) => {
   };
 });
 
-// processLocalImages：测试可注入「上传后」的 markdown
+// processImagesForOutbound：测试可注入「上传后」的 markdown + followUp
+const mockProcessImagesForOutbound = vi.hoisted(() =>
+  vi.fn(async (content: string) => ({ text: content, followUpUrls: [] as string[] })),
+);
 const mockProcessLocalImages = vi.hoisted(() =>
   vi.fn(async (content: string) => content),
 );
@@ -44,6 +47,7 @@ vi.mock("../../src/services/media.ts", async (importOriginal) => {
   const orig = await importOriginal<typeof import("../../src/services/media.ts")>();
   return {
     ...orig,
+    processImagesForOutbound: mockProcessImagesForOutbound,
     processLocalImages: mockProcessLocalImages,
     uploadMediaToDingTalk: mockUploadMediaToDingTalk,
   };
@@ -126,7 +130,10 @@ describe("sendTextToDingTalk target routing", () => {
 
   it("含 markdown 图片时使用 sampleMarkdown（避免 text 灰图）", async () => {
     mockGetOapiAccessToken.mockResolvedValue("oapi-token");
-    mockProcessLocalImages.mockResolvedValue("看图：\n\n![](@media-id-1)");
+    mockProcessImagesForOutbound.mockResolvedValue({
+      text: "看图：\n\n![](@media-id-1)",
+      followUpUrls: [],
+    });
 
     const { sendTextToDingTalk } = await import("../../src/services/messaging.ts");
     await sendTextToDingTalk({
@@ -135,7 +142,7 @@ describe("sendTextToDingTalk target routing", () => {
       text: "看图：\n\n![](file:///tmp/a.png)",
     });
 
-    expect(mockProcessLocalImages).toHaveBeenCalled();
+    expect(mockProcessImagesForOutbound).toHaveBeenCalled();
     expect(mockPost).toHaveBeenCalledWith(
       expect.stringContaining("/oToMessages/batchSend"),
       expect.objectContaining({

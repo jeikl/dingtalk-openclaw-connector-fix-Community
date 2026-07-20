@@ -28,15 +28,14 @@ export const IMAGE_EXTENSIONS = /\.(png|jpg|jpeg|gif|bmp|webp|tiff|svg)$/i;
  */
 export const LOCAL_IMAGE_RE = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
-/** 纯文本图片路径正则表达式 */
-export const BARE_IMAGE_PATH_RE =
-  /`?((?:\/(?:tmp|var|private|Users|home|root|mnt|opt|data|Volumes)\/[^\s`'",)]+|[A-Za-z]:[\\/][^\s`'",)]+)\.(?:png|jpg|jpeg|gif|bmp|webp|tiff|svg))`?/gi;
-
 /** 是否为需上传的本地图引用 */
 export function isLocalImageRef(rawPath: string): boolean {
   const p = (rawPath || "").trim();
   if (!p) return false;
   if (/^https?:\/\//i.test(p)) return false;
+  if (p.includes("://") && !p.startsWith("file://") && !p.startsWith("MEDIA:") && !p.startsWith("attachment://")) {
+    return false;
+  }
   if (p.startsWith("@") && !p.includes("/") && !p.includes("\\")) return false;
   if (p.startsWith("file://") || p.startsWith("MEDIA:") || p.startsWith("attachment://")) {
     return true;

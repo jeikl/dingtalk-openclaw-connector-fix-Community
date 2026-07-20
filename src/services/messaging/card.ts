@@ -540,6 +540,8 @@ export async function finishAICard(
    * 不要在其他场景使用，避免 message 工具的空内容 bug 复发。
    */
   skipInputingWalk?: boolean,
+  /** 会话 ID，用于「引用卡片」时按会话回填正文缓存 */
+  conversationId?: string,
 ): Promise<void> {
   const varName = contentVar
     || (config?.cardContentVar as string)
@@ -559,6 +561,18 @@ export async function finishAICard(
   log?.info?.(
     `[DingTalk][AICard] 开始 finish（一次性定稿，无流式回放），最终内容长度=${fixedContent.length}`,
   );
+
+  // 缓存终稿：引用 AI 卡时钉钉往往不带正文，靠 outTrackId / 会话回填
+  try {
+    const { rememberCardContent } = await import("./card-content-cache.ts");
+    rememberCardContent({
+      text: fixedContent,
+      outTrackId: card.cardInstanceId,
+      conversationId,
+    });
+  } catch (e: any) {
+    log?.warn?.(`[DingTalk][CardCache] 写入失败: ${e?.message || e}`);
+  }
 
   // 钉钉 AI Card 状态机：PROCESSING → INPUTING → FINISHED。
   //
