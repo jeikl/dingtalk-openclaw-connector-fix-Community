@@ -83,7 +83,23 @@ Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48
     Please write a DingTalk image sending skill following this approach: use markdown to send images, with image captions for rich text; direct URLs or local paths can be embedded directly in markdown, and if local paths contain spaces, rename to remove spaces first before sending.
     ```
 
-- 🎨 Custom AI Card template support for user-prebuilt cards (with copy button), uses official default card if not set:
+- 🎨 Custom AI Card templates supported; **if `cardTemplateId` is omitted**, defaults to community template `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` (copy button, etc.).
+
+### Minimal config
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "clientId": "your-clientId",
+    "clientSecret": "your-clientSecret"
+  }
+}
+```
+
+Defaults apply: stream card `0d2c84b3-…schema`, session answer card on, message answer card on, `messageImageMd=false`.
+
+### Maximal config (documented fields only, all default values)
 
 ```json
 "channels": {
@@ -91,45 +107,49 @@ Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48
     "enabled": true,
     "clientId": "your-clientId",
     "clientSecret": "your-clientSecret",
-    "cardTemplateId": "your-card-template-id.schema",
+    "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
     "cardContentVar": "content",
-    "messageAnswerCard": true
+    "answerCard": true,
+    "answerActToken": 500,
+    "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
+    "messageAnswerCard": true,
+    "messageImageMd": false,
+    "accounts": {
+      "main-bot": {
+        "enabled": true,
+        "name": "main-bot",
+        "clientId": "your-clientId",
+        "clientSecret": "your-clientSecret",
+        "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
+        "cardContentVar": "content",
+        "answerCard": true,
+        "answerActToken": 500,
+        "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
+        "messageAnswerCard": true,
+        "messageImageMd": false
+      }
+    }
   }
 }
 ```
 
-### DingTalk-specific config (`channels.dingtalk-connector`)
-
-Only **this plugin’s DingTalk features** (not generic channel policy / session / logging).  
-Top-level and `accounts.<id>` share these; account overrides inherit when omitted.
-
-#### Credentials & multi-bot
+### DingTalk-specific fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `clientId` | string \| number | — | DingTalk AppKey / Client ID |
+| `clientId` | string \| number | — | AppKey / Client ID |
 | `clientSecret` | string \| SecretRef | — | AppSecret |
-| `accounts` | object | — | Multi-bot map; keys are account IDs |
+| `accounts` | object | — | Multi-bot map |
 | `accounts.*.name` | string | — | Display name |
 | `accounts.*.clientId` / `clientSecret` | — | — | Per-bot credentials |
-| `accounts.*.chatbotUserId` | string | — | Encrypted bot id (for bots @-mentioning each other) |
-| `accounts.*.chatbotCorpId` | string | — | Bot corp id |
+| `cardTemplateId` | string | `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` | Streaming AI Card template |
+| `cardContentVar` | string | `"content"` | Stream card content variable |
+| `answerCard` | boolean | **true** | Session-stream answer card; `false` disables |
+| `answerActToken` | int | **500** | Token threshold for spawning answer card |
+| `answerCardTemplateId` | string | `d246b7f5-1783-4e9b-bb46-bef52d63050e.schema` | Static answer card template |
+| `messageAnswerCard` | boolean | **true** | message-tool body via answer card; `false` = plain message |
+| `messageImageMd` | boolean | **false** | message images: separate vs merge markdown |
 
-#### AI card / answer card / message tool
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | Group reply style; `text`/`markdown` skips streaming AI card (multi-bot @) |
-| `cardTemplateId` | string | official stream template | Streaming AI Card template id |
-| `cardContentVar` | string | `"msgContent"` | Stream card content variable |
-| `answerCard` | boolean | **true** | **Session-stream** answer card; set `false` to disable |
-| `answerActToken` | int | **500** | Token threshold: ≤ finalize on stream card; > open static answer card |
-| `answerCardTemplateId` | string | built-in answer template | Static answer card template id |
-| `messageAnswerCard` | boolean | **true** | **message tool** body via answer card; `false` = plain text/markdown. Independent of `answerCard`; media stays on normal APIs |
-| `messageImageMd` | boolean | **false** | message images: `false` text then image; `true` merge multi-image+text markdown |
-| `enableMediaUpload` | boolean | — | Enable media upload |
-
-> Create/publish card templates in [DingTalk Open Platform](https://open.dingtalk.com/).  
 > `answerCard` = conversation finalize; `messageAnswerCard` = message-tool outbound.
 
 ---

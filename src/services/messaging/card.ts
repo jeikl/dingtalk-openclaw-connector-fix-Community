@@ -28,8 +28,10 @@ export function getActiveCardForConversation(openConversationId: string): AICard
 
 // ============ 常量 ============
 
-const DEFAULT_CARD_TEMPLATE_ID = "02fcf2f4-5e02-4a85-b672-46d1f715543e.schema";
-const DEFAULT_CARD_CONTENT_VAR = "msgContent";
+/** 社区增强版流式 AI Card 默认模板（含复制按钮等） */
+const DEFAULT_CARD_TEMPLATE_ID = "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema";
+/** 与默认增强模板 0d2c84b3… 字段一致 */
+const DEFAULT_CARD_CONTENT_VAR = "content";
 
 /**
  * 钉钉卡片 API 的最大 QPS（官方限制约 40 次/秒）。

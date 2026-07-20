@@ -85,9 +85,25 @@ message 远程 `media` 下载上传。
     请你把以下发送图片的方式写成你的钉钉图片发送skill，当涉及到图片发送，则调用该技能：用markdown语法发送图片，支持添加图片注释实现图文并茂；直链图片或本地路径文件均可直接嵌入markdown发送，如本地路径含空格请先重命名去除空格再发送。展示工具参数时请放在代码块中，避免被当作待发送图片。
     ```
 
-- 🎨 支持自定义 AI Card 模板，可使用本人预制的卡片（含内容复制按钮），不填则使用官方默认卡片。
+- 🎨 支持自定义 AI Card 模板；**不填 `cardTemplateId` 时默认**社区增强模板 `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema`（含复制按钮等）。
 
-**单机器人：**
+### 最小配置（够跑）
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "clientId": "你的clientId",
+    "clientSecret": "你的clientSecret"
+  }
+}
+```
+
+未写的项走默认：流式卡 `0d2c84b3-…schema`、会话答案卡开、message 答案卡开、`messageImageMd=false`。
+
+### 最大化配置（仅文档字段，值均为默认）
+
+把钉钉专属可选项写全，便于对照；语义与「不配」时一致。
 
 ```json
 "channels": {
@@ -95,75 +111,49 @@ message 远程 `media` 下载上传。
     "enabled": true,
     "clientId": "你的clientId",
     "clientSecret": "你的clientSecret",
-    "cardTemplateId": "你的卡片模板ID.schema",
+    "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
     "cardContentVar": "content",
-    "messageImageMd": false,
+    "answerCard": true,
+    "answerActToken": 500,
+    "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
     "messageAnswerCard": true,
-    "debug": false
-  }
-}
-```
-
-**多机器人（多 Agent）：** 每个账号可绑定不同机器人
-
-```json
-"channels": {
-  "dingtalk-connector": {
-    "enabled": true,
+    "messageImageMd": false,
     "accounts": {
       "main-bot": {
         "enabled": true,
-        "name": "工作流机器人",
+        "name": "主机器人",
         "clientId": "你的clientId",
         "clientSecret": "你的clientSecret",
-        "cardTemplateId": "f9b75aac-713c-40e8-a17f-e236d7b5422b.schema",
-        "cardContentVar": "content"
-      },
-      "another-bot": {
-        "enabled": true,
-        "name": "另一个机器人",
-        "clientId": "另一个clientId",
-        "clientSecret": "另一个clientSecret",
-        "cardTemplateId": "f9b75aac-713c-40e8-a17f-e236d7b5422b.schema",
-        "cardContentVar": "content"
+        "cardTemplateId": "0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema",
+        "cardContentVar": "content",
+        "answerCard": true,
+        "answerActToken": 500,
+        "answerCardTemplateId": "d246b7f5-1783-4e9b-bb46-bef52d63050e.schema",
+        "messageAnswerCard": true,
+        "messageImageMd": false
       }
     }
   }
 }
 ```
 
-### 钉钉专属配置字段（`channels.dingtalk-connector`）
-
-只列**本插件钉钉能力**相关字段（不含渠道通用策略 / 会话隔离 / 日志等）。  
-顶层单账号与 `accounts.<id>` 共用；账号未填则继承顶层。
-
-#### 凭证与多机器人
+### 钉钉专属配置字段
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `clientId` | string \| number | — | 钉钉应用 AppKey / Client ID |
+| `clientId` | string \| number | — | 钉钉 AppKey / Client ID |
 | `clientSecret` | string \| SecretRef | — | AppSecret |
 | `accounts` | object | — | 多机器人；key 为账号 ID |
 | `accounts.*.name` | string | — | 账号显示名 |
 | `accounts.*.clientId` / `clientSecret` | — | — | 该机器人凭证 |
-| `accounts.*.chatbotUserId` | string | — | 机器人加密 ID（群内互相 @ 用） |
-| `accounts.*.chatbotCorpId` | string | — | 机器人 corpId |
+| `cardTemplateId` | string | `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` | 会话流式 AI Card 模板 |
+| `cardContentVar` | string | `"content"` | 流式卡内容变量名 |
+| `answerCard` | boolean | **true** | 会话流式答案卡；`false` 关闭 |
+| `answerActToken` | int | **500** | 答案卡 token 阈值：≤ 原卡定稿，> 另开答案卡 |
+| `answerCardTemplateId` | string | `d246b7f5-1783-4e9b-bb46-bef52d63050e.schema` | 答案静态卡模板 |
+| `messageAnswerCard` | boolean | **true** | message 工具正文走答案静态卡；`false`=普通消息 |
+| `messageImageMd` | boolean | **false** | message 图文：`false` 文图分开；`true` 可合并 markdown |
 
-#### AI 卡 / 答案卡 / message 工具
-
-| 字段 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `groupReplyMode` | `"aicard"` \| `"text"` \| `"markdown"` | `"aicard"` | 群回复形态；`text`/`markdown` 时群聊不用流式 AI 卡（便于多 bot @） |
-| `cardTemplateId` | string | 官方默认流式模板 | 会话流式 AI Card 模板 ID |
-| `cardContentVar` | string | `"msgContent"` | 流式卡内容变量名 |
-| `answerCard` | boolean | **true** | **会话流式**答案卡：长答案另开静态卡，原卡定格「思考完成」；`false` 关闭 |
-| `answerActToken` | int | **500** | 会话答案卡阈值（token）；≤ 原卡定稿，> 另开答案卡 |
-| `answerCardTemplateId` | string | 内置答案模板 | 答案静态卡模板 ID |
-| `messageAnswerCard` | boolean | **true** | **message 工具**正文是否走答案静态卡；`false`=普通 text/markdown。与 `answerCard` 独立；媒体仍普通通道 |
-| `messageImageMd` | boolean | **false** | message 图文：`false` 文图分开；`true` 多图+文字可合并 markdown |
-| `enableMediaUpload` | boolean | — | 是否启用媒体上传 |
-
-> 卡片模板在[钉钉开放平台](https://open.dingtalk.com/)创建发布。  
 > `answerCard` = 对话流式收尾；`messageAnswerCard` = message 工具外发。
 
 ---

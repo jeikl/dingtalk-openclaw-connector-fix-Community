@@ -14,7 +14,7 @@
     "additionalProperties": false,
     "properties": {
       "cardTemplateId": { "type": "string" },
-      "cardContentVar": { "type": "string", "default": "msgContent" }
+      "cardContentVar": { "type": "string", "default": "content" }
     }
   },
   "channelConfigs": {
@@ -265,7 +265,7 @@
           },
           "cardContentVar": {
             "type": "string",
-            "default": "msgContent"
+            "default": "content"
           },
           "answerCard": {
             "type": "boolean"
@@ -516,7 +516,7 @@
                 },
                 "cardContentVar": {
                   "type": "string",
-                  "default": "msgContent"
+                  "default": "content"
                 },
                 "answerCard": {
                   "type": "boolean"
@@ -579,7 +579,7 @@
         },
         "channels.dingtalk-connector.cardTemplateId": {
           "label": "AI Card Template ID",
-          "help": "会话流式 AI Card 模板 ID；不填用官方默认流式模板。",
+          "help": "会话流式 AI Card 模板 ID；不填默认 0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema。",
           "advanced": true
         },
         "channels.dingtalk-connector.cardContentVar": {

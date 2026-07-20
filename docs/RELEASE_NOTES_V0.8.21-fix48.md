@@ -46,13 +46,12 @@ openclaw gateway restart
 
 ### 钉钉专属字段（文档）
 
-见 README「钉钉专属配置字段」/ README.en「DingTalk-specific config」（不含渠道通用策略与日志字段）：
+见 README 最小/最大化配置与字段表：
 
-- 凭证 / `accounts` / `chatbotUserId`
-- `groupReplyMode` / `cardTemplateId` / `cardContentVar`
-- `answerCard` / `answerActToken`（默认 500）/ `answerCardTemplateId`
-- `messageAnswerCard`（默认 true）/ `messageImageMd`（默认 false）
-- `enableMediaUpload`
+- 凭证 / `accounts`（name、clientId、clientSecret）
+- `cardTemplateId`（默认 `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema`）/ `cardContentVar`（默认 `content`）
+- `answerCard` / `answerActToken`（500）/ `answerCardTemplateId`
+- `messageAnswerCard`（true）/ `messageImageMd`（false）
 
 ## 日志
 
