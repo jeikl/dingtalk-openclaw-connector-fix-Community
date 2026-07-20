@@ -23,26 +23,33 @@
 
 ## 🔧 最近更新
 
-| 日期 | 标识 | 更新内容 |
-|------|------|---------|
-| 2026-07-20 | 🚀 | **v0.8.21-fix37**：① **MD 本地图**支持 `/mnt` 等任意绝对路径，中文路径 FormData 安全名 + `/tmp` 重试；② **代码块内路径不上传**（参数示例不被换成 mediaId）；③ **`messageImageMd`**（默认 false）message 工具默认文图分开，true 时多图+文字才合并 markdown；④ **`[DingTalk][LocalImage]`** 全链路强制日志（无需 debug） |
-| 2026-07-14 | 🚀 | **v0.8.21-fix31 稳定版**：① 流式串行队列+尾随合并（过程/终态不再半截）；② `answerActToken` 双卡保留；③ OpenClaw 对齐错误中文映射；④ ACK「🦸 正在召唤大模型…」+ 纯工具打头「🤖 大模型已收到需求」；⑤ **安装向导**：accountId 由 clientId 推导（不再写死 apibot）、同 agent 不重复 bindings；⑥ **移除** `cardToolVar`/`cardProcessVar` 配置（工具进度统一写入 `cardContentVar`）；⑦ 仓库清理 |
-| 2026-06-29 | 🐛 | **修复答案卡路径触发 500**：`finishAICard` 新增 `skipInputingWalk` 参数；答案卡（`answerCard` 模式）路径是新建的专用模板静态卡，不应走 INPUTING 过渡——内置答案卡模板字段与原流式卡可能不兼容，`streamAICard` INPUTING 切换时钉钉返回 500。答案卡调用时显式传 `skipInputingWalk=true` 直接 PUT FINISHED；message 工具路径仍走 `!inputingStarted` 守卫保留空内容修复。 |
-| 2026-06-29 | 🔧 | **答案卡触发阈值默认 600 → 500**：多数中文 LLM 实际回复（500-700 字）跨过原 600 阈值更频繁，改默认值减少"两张卡"体验。已有用户配置不动。 |
-| 2026-06-29 | 🐛 | **修复钉钉 AI 卡片流式回复不完整 例 “你...” 的问题** ：采用**延迟建卡**模式，让流式文本积累更多文本，把建卡时机放到真正的文本到来之后，再进行建卡流式卡片展示 |
-| 2026-06-29 | 🐛 | **修复 message 工具发卡 content 为空**：`finishAICard` 简化后直接 PUT FINISHED，对 reply-dispatcher 路径（已流式过）无影响，但 message 工具走的「新建卡立刻 finish」路径（`createAICardForTarget` → `finishAICard`，`inputingStarted=false`）会跳过 INPUTING 状态过渡，导致钉钉不渲染 content（卡片空白）。`finishAICard` 现仅在 `!inputingStarted` 时先调一次 `streamAICard(..., /*finished*/ false)` 走完 INPUTING + 内容写入再 FINISHED（`finished=false` 避免触发"假流式回放"，已流式过的路径 `inputingStarted=true` 完全不受影响）。**升级：** `npm install -g @jeik/dingtalk-connector@fix` |
-| 2026-06-29 | ✨ | **修复 webchat 中最终答案已生成，但由于钉钉上游流式卡片的原因导致长文本一直渲染的问题**：新增**答案卡模式（默认开启）**，钉钉回复默认会绑定一张流式卡片和答案卡片（默认内置），最终答案如果 token >  `answerActToken`（默认 500）时，原流式卡片直接显示"✅ 思考完成"、另投一张独立的**静态答案卡**，规避钉钉流式卡的官方固定速度渲染的 bug；短答案仍在原流式卡渲染。长文本新建答案卡快速回复，短文本回答不影响用户体验。模板id/阈值可配（`answerCardTemplateId` / `answerActToken`） |
-| 2026-06-29 | ✨ | **增加 AI 卡片工具流式展示工具调用进度**：增加调用工具时原卡流式显示 `🔧 正在调用工具：<工具名>`，结束后正常更新为回复 本功能补齐官方连接器未处理 tool 回调的短板|
-| 2026-06-29 | 🐛 | **修复多条文本回答、工具调用错误等异常情况导致 AI流式卡片提前停止渲染的问题，**：dws 等工具失败结果（带 `isError`/`isStatusNotice`）以前偶发被当最终答案、提前停渲染；现按 OpenClaw 官方标准排除，但原版官方 dingtalk-connector 并没有考虑这方面，本社区版已完美修复支持，仅展示不计入答案 |
-| 2026-06-29 | 🔧 | **安装向导对比官方超级增强**：安装向导支持**增强版AI card、已有配置跳过、扫码配置、填入clientID和clientSecret配置、dws 改为更新最新的 latest 版本、检测并可禁用遮蔽 npm 版的本地插件副本等**，安装向导更健壮 更易懂 更不会覆盖|
-| 2026-06-28 | 📦 | **本仓库已上线npm官方仓库包**：`@jeik/dingtalk-connector`，新增一键扫码安装命令；`--force` 覆盖更新无需卸载 |
-| 2026-06-28 | 🐛 | 修复模型一轮内发送多条过程消息时，连接器把中间过程消息当成最终答案、提前结束 AI Card 渲染的问题（改为整轮结束才定稿卡片） |
-| 2026-05-14 | ✨ | **Markdown 图片发送支持直链和本地路径，无需下载到本地，请参考下列提示词** |
-| 2026-05-11 | 🔧 | **Agent 多轮循环完成后，中间过程消息重复发送到钉钉对话，造成刷屏和 AI Card 倒放重渲染** |
-| 2026-05-11 | 🐛 | OpenClaw 4.29+ 版本导致钉钉插件失效，群聊 @Agent 回复显示"✅ 任务执行完成（无文本输出）" |
-| 2026-05-08 | 🌐 | 未注册的 Pong 监听器导致的 WebSocket 幻影重连，来源于 [PR #566](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/566)（[Majorshi](https://github.com/Majorshi) 提交） |
+### 🚀 v0.8.21-fix37 · 2026-07-20（当前）
 
-完整更新日志：[FIXES.md](FIXES.md)（[🇺🇸 English](FIXES.en.md)）
+**主题：本地图（含 `/mnt`）· message 文图策略 · 可观测日志**
+
+| | 改动 |
+|--|------|
+| 📷 **MD 本地图** | 支持任意绝对路径（含 **`/mnt` 共享盘**、中文目录）；上传失败会拷到 `/tmp` 再试 |
+| 📦 **代码块保护** | 围栏 / 行内 code 里的路径**不会上传**，参数示例不会被改成 `mediaId` |
+| ⚙️ **`messageImageMd`** | 默认 `false`：message 工具**文图分开**；`true` 时仅「多图 + 文字」合并为一条 markdown |
+| 🔍 **诊断日志** | 前缀 `[DingTalk][LocalImage]`，**无需开 debug** 也能看到匹配 / 上传 / 失败原因 |
+
+```bash
+npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
+```
+
+---
+
+### 更早版本（摘要）
+
+| 日期 | 版本 / 要点 |
+|------|-------------|
+| 2026-07-14 | **fix31** — 流式串行队列防半截；双卡 `answerActToken`；错误中文映射；召唤 ACK；安装向导 accountId 推导；去掉 `cardToolVar`/`cardProcessVar` |
+| 2026-06-29 | 答案卡 500 修复；阈值默认 500；延迟建卡；message 空卡修复；答案卡模式；工具进度展示；过程消息误终稿修复；安装向导增强 |
+| 2026-06-28 | 上线 npm `@jeik/dingtalk-connector`；过程消息提前定稿修复 |
+| 2026-05 | MD 直链/本地图；多轮刷屏；4.29+ 无文本输出；WebSocket 幻影重连 |
+
+完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix37](docs/RELEASE_NOTES_V0.8.21-fix37.md)
 
 ---
 

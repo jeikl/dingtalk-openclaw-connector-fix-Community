@@ -23,26 +23,33 @@
 
 ## 🔧 Recent Updates
 
-| Date | Tag | Update |
-|------|------|--------|
-| 2026-07-20 | 🚀 | **v0.8.21-fix37**: (1) local MD images on any absolute path including **`/mnt`**, Chinese paths + tmp retry; (2) **skip code-block paths** (no accidental mediaId rewrite of samples); (3) **`messageImageMd`** (default false) — message tool keeps text/image separate unless multi-image+text merge; (4) always-on **`[DingTalk][LocalImage]`** diagnostics |
-| 2026-07-14 | 🚀 | **v0.8.21-fix31 stable**: (1) serial stream queue + final stream-cover; (2) `answerActToken` dual-card kept; (3) OpenClaw-aligned error mapping; (4) ACK + tool-first placeholder UX; (5) **install wizard**: accountId derived from clientId (not fixed `apibot`), no duplicate agent bindings; (6) **removed** `cardToolVar`/`cardProcessVar` (tools share `cardContentVar`); (7) repo hygiene |
-| 2026-06-29 | 🐛 | **Fixed answer-card path triggering 500**: `finishAICard` gained a `skipInputingWalk` parameter. The answer-card path (`answerCard` mode) creates a new dedicated static-template card and shouldn't walk through INPUTING — the built-in answer-card template's fields may be incompatible with the streaming template, so `streamAICard`'s INPUTING transition returned 500. Answer-card calls now pass `skipInputingWalk=true` and PUT FINISHED directly; the message-tool path still walks through the `!inputingStarted` guard to preserve the empty-content fix. |
-| 2026-06-29 | 🔧 | **Answer-card threshold default 600 → 500**: most Chinese LLM replies (500-700 chars) routinely crossed the old 600 threshold, so users saw "two cards" too often. Lowered default to reduce that experience. Existing user configs untouched. |
-| 2026-06-29 | 🐛 | **Fixed incomplete DingTalk AI Card streaming replies (e.g. "你...")**: switched to **deferred card creation** — accumulate streaming text first, only create the AI Card once the real reply tokens actually start arriving, eliminating the half-empty "你..." card |
-| 2026-06-29 | 🐛 | **Fixed message-tool cards rendering empty content**: `finishAICard` was simplified to PUT FINISHED directly. That works for the reply-dispatcher path (card already streamed, `inputingStarted=true`) but breaks the message-tool path (`createAICardForTarget` → `finishAICard` on a fresh card, `inputingStarted=false`) — skipping the INPUTING transition made DingTalk not render the `content` field (blank card). `finishAICard` now only triggers an extra `streamAICard(..., /*finished*/ false)` walk through INPUTING + content write when `!inputingStarted`; `finished=false` avoids "fake-stream replay" and the already-streamed path (`inputingStarted=true`) is unchanged. **Upgrade:** `npm install -g @jeik/dingtalk-connector` |
-| 2026-06-29 | ✨ | **Fixed webchat long-text never finishing due to DingTalk's bug-bounded streaming-card render speed**: introduced **answer-card mode (on by default)** — DingTalk replies now bind a streaming card plus an answer card (built-in). When the final answer exceeds `answerActToken` (default 500) tokens, the streaming card shows just "✅ Done thinking", and an independent **static answer card** carries the full reply, sidestepping DingTalk's fixed-speed streaming-card render bug. Short answers still render on the streaming card; long answers get a fast static reply without hurting UX on short replies. Template id and threshold are configurable (`answerCardTemplateId` / `answerActToken`) |
-| 2026-06-29 | ✨ | **Streamed tool-call progress on the AI Card**: while a tool runs, the card streams `🔧 Calling tool: <name>` and then seamlessly switches to the reply once done. Closes the gap the official connector never handled for tool callbacks |
-| 2026-06-29 | 🐛 | **Fixed premature AI Card render-stop when multiple answers / tool-call errors land in one turn**: dws and other tool-failure results (carrying `isError`/`isStatusNotice`) were occasionally taken as the final answer and stopped rendering early. Now excluded per OpenClaw's official rule — the upstream official `dingtalk-connector` never handled this; this community fork does, showing them transiently without counting as the answer |
-| 2026-06-29 | 🔧 | **Major install wizard upgrade vs upstream**: supports **enhanced AI Card toggle, skip-when-config-exists, QR scan config, manual clientId/clientSecret entry, dws now updated to the latest version, detects and can disable a local plugin copy shadowing the npm version**. Wizard is now more robust, more discoverable, and won't overwrite existing setups |
-| 2026-06-28 | 📦 | **Now published to the official npm registry**: package `@jeik/dingtalk-connector`, added one-command scan-to-install; `--force` overwrites for updates, no uninstall needed |
-| 2026-06-28 | 🐛 | Fixed the connector mistaking an intermediate progress message for the final answer and ending AI Card rendering too early when the model emits multiple progress messages in one turn (card now finalized only at turn end) |
-| 2026-05-14 | ✨ | Markdown image support for direct URLs and local paths, no download required |
-| 2026-05-11 | 🔧 | AI Card flashing and repeated re-rendering caused by duplicate intermediate messages after Agent multi-round loop completes |
-| 2026-05-11 | 🐛 | OpenClaw 4.29+ causing DingTalk plugin to show "✅ 任务执行完成（无文本输出）" in group chat @Agent |
-| 2026-05-08 | 🌐 | WebSocket phantom reconnect caused by unregistered Pong listener, from [PR #566](https://github.com/DingTalk-Real-AI/dingtalk-openclaw-connector/pull/566) by [Majorshi](https://github.com/Majorshi) |
+### 🚀 v0.8.21-fix37 · 2026-07-20 (current)
 
-Full update log: [FIXES.md](FIXES.md)（[🇨🇳 中文](FIXES.en.md)）
+**Theme: local images (incl. `/mnt`) · message media layout · diagnostics**
+
+| | Change |
+|--|--------|
+| 📷 **Local MD images** | Any absolute path (incl. **`/mnt`**, Chinese paths); upload retries via `/tmp` copy |
+| 📦 **Code-block safe** | Paths inside fenced/inline code are **not** uploaded (param samples stay literal) |
+| ⚙️ **`messageImageMd`** | Default `false`: message tool sends **text then image** separately; `true` merges only multi-image + text into one markdown |
+| 🔍 **Diagnostics** | Prefix `[DingTalk][LocalImage]` — **no `debug` flag required** |
+
+```bash
+npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
+```
+
+---
+
+### Earlier releases (summary)
+
+| Date | Highlights |
+|------|------------|
+| 2026-07-14 | **fix31** — serial stream queue; dual-card threshold; error mapping; ACK UX; wizard accountId; drop `cardToolVar`/`cardProcessVar` |
+| 2026-06-29 | Answer-card 500 fix; threshold 500; deferred card create; empty message-card fix; tool progress; wizard upgrades |
+| 2026-06-28 | npm `@jeik/dingtalk-connector`; premature finalization fix |
+| 2026-05 | MD images; multi-turn spam; 4.29 empty reply; WS phantom reconnect |
+
+Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix37](docs/RELEASE_NOTES_V0.8.21-fix37.md)
 
 ---
 
