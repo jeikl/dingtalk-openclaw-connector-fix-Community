@@ -43,3 +43,29 @@ export function looksLikeDingtalkId(raw: string): boolean {
   }
   return true;
 }
+
+/**
+ * Infer OpenClaw chat type for outbound session routing.
+ * Must match resolveOutboundTarget in services/messaging.ts:
+ * - group:… / cid… → group
+ * - user:… / bare id → direct (DM)
+ *
+ * Core detectTargetKind defaults bare ids to "group" (Telegram-style), which
+ * wrongly routes DingTalk DM userIds into group: sessions and drops delivery
+ * context from the real direct: session UI/model history.
+ */
+export function inferDingtalkTargetChatType(raw: string): "direct" | "group" | undefined {
+  const trimmed = stripProviderPrefix(raw.trim());
+  if (!trimmed) {
+    return undefined;
+  }
+  const lowered = trimmed.toLowerCase();
+  if (lowered.startsWith("group:") || lowered.startsWith("cid")) {
+    return "group";
+  }
+  if (lowered.startsWith("user:")) {
+    return "direct";
+  }
+  // bare staffId / userId → DM (same as messaging resolveOutboundTarget)
+  return "direct";
+}

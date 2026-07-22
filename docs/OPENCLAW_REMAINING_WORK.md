@@ -19,8 +19,8 @@
 
 ## 仍属 OpenClaw 核心（勿在本仓硬改）
 
-1. image 工具 `imageUrl` 混合投递 / SSRF allowlist / `localRoots`  
-2. message delivery-mirror 是否进模型上下文  
+1. ~~**OC-4**~~ **本机已落地**（主文档 §2.1.9）：`deliveryContext` + 人话出站记录 + 钉钉 `inferTargetChatType`（裸 id → direct）  
+2. image 工具 `imageUrl` 混合投递 / SSRF allowlist / `localRoots`  
 3. Gateway 假死 / stuck session 看门狗  
 
 详见主文档 §2～§4。

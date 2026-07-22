@@ -25,7 +25,11 @@ import {
 } from "./directory.ts";
 import { resolveDingtalkGroupToolPolicy } from "./policy.ts";
 import { probeDingtalk } from "./probe.ts";
-import { normalizeDingtalkTarget, looksLikeDingtalkId } from "./targets.ts";
+import {
+  normalizeDingtalkTarget,
+  looksLikeDingtalkId,
+  inferDingtalkTargetChatType,
+} from "./targets.ts";
 import { dingtalkOnboardingAdapter } from "./onboarding.ts";
 import { monitorDingtalkProvider } from "./core/provider.ts";
 import { sendTextToDingTalk, sendMediaToDingTalk } from "./services/messaging/index.ts";
@@ -270,6 +274,23 @@ export const dingtalkPlugin: ChannelPlugin<ResolvedDingtalkAccount> = {
   setupWizard: dingtalkOnboardingAdapter as any,
   messaging: {
     normalizeTarget: (raw) => normalizeDingtalkTarget(raw) ?? undefined,
+    /**
+     * Align session-key peer kind with actual send routing (bare id = DM).
+     * Without this, OpenClaw core defaults bare targets to group and writes
+     * deliveryContext / mirrors into the wrong session.
+     */
+    inferTargetChatType: ({ to }) => inferDingtalkTargetChatType(to),
+    parseExplicitTarget: ({ raw }) => {
+      const chatType = inferDingtalkTargetChatType(raw);
+      if (!chatType) {
+        return null;
+      }
+      const normalized = normalizeDingtalkTarget(raw);
+      if (!normalized) {
+        return null;
+      }
+      return { chatType, id: normalized };
+    },
     targetResolver: {
       looksLikeId: looksLikeDingtalkId,
       hint: "<userId|user:userId|group:conversationId>",
