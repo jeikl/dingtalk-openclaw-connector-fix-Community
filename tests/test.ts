@@ -15,6 +15,9 @@ import {
   getDingtalkConfig,
   isDingtalkConfigured,
   getUnionId,
+  formatSenderDisplayLabel,
+  formatHiredDateShanghai,
+  formatSenderRoles,
 } from "../src/utils/utils-legacy.ts";
 import {
   buildSessionContext,
@@ -28,6 +31,8 @@ import {
   getFileDownloadUrl,
   downloadFileToLocal,
   extractMessageContent,
+  formatSenderIdentityPrefix,
+  withSenderIdentityPrefix,
 } from "../src/core/message-handler.ts";
 import { getAccessToken, getOapiAccessToken } from "../src/utils/token.ts";
 
@@ -323,6 +328,9 @@ export const __testables = {
   getAccessToken,
   getOapiAccessToken,
   getUnionId,
+  formatSenderDisplayLabel,
+  formatHiredDateShanghai,
+  formatSenderRoles,
 
   // messaging helpers
   buildMsgPayload,
@@ -356,6 +364,8 @@ export const __testables = {
 
   // message extraction
   extractMessageContent,
+  formatSenderIdentityPrefix,
+  withSenderIdentityPrefix,
 
   // MCP proactive media senders (test-only)
   sendFileProactive,

@@ -6,7 +6,8 @@
  * 不带可读正文 → 模型侧只看到 `[引用] [interactiveCard消息]`。
  *
  * 对策：我们在 finishAICard / 定稿时把 outTrackId → 正文 记下来；
- * 引用时用 outTrackId / msgId / 会话最近一条 回填。
+ * 引用时仅用载荷里的 outTrackId / msgId 等精确回填。
+ * 默认不做「会话最近一条」兜底（会把错误卡片正文当成用户引用的内容）。
  *
  * 内存 LRU + TTL，进程重启后清空（可接受）。
  */
@@ -132,7 +133,10 @@ export function collectCardLookupIds(repliedMsg: any, contentObj: any): string[]
 export function lookupCardContent(params: {
   ids?: string[];
   conversationId?: string;
-  /** 会话内最近一条（引用未带 id 时的兜底） */
+  /**
+   * 是否允许用「会话最近一张卡」兜底。
+   * 默认 false：只按 ids（outTrackId / msgId 等）精确命中，避免张冠李戴。
+   */
   allowConversationRecent?: boolean;
 }): string | null {
   pruneExpired();
@@ -145,7 +149,8 @@ export function lookupCardContent(params: {
     if (b?.text) return b.text;
   }
 
-  if (params.allowConversationRecent !== false && params.conversationId) {
+  // 仅显式开启时才回退会话最近卡（默认关闭）
+  if (params.allowConversationRecent === true && params.conversationId) {
     const list = byConversation.get(params.conversationId) || [];
     for (const ref of list) {
       // 优先非「思考完成」的条目

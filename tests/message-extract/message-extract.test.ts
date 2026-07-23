@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { __testables } from '../test';
 
-const { extractMessageContent } = __testables as any;
+const {
+  extractMessageContent,
+  formatSenderIdentityPrefix,
+  withSenderIdentityPrefix,
+  formatSenderDisplayLabel,
+} = __testables as any;
 
 const emptyArrays = {
   imageUrls: [],
@@ -253,10 +258,11 @@ describe('extractMessageContent', () => {
         },
       });
       expect(out.text).toContain('[引用]');
-      expect(out.text).toMatch(/卡片消息|缓存未命中/);
+      expect(out.text).toContain('钉钉卡片消息。');
+      expect(out.text).not.toContain('无法识别');
     });
 
-    it('引用 interactiveCard 无正文时，用 CardCache 按会话回填', async () => {
+    it('引用 interactiveCard 无正文时，仅按载荷 id 精确回填，不兜底会话最近卡', async () => {
       const {
         rememberCardContent,
         clearCardContentCache,
@@ -267,7 +273,9 @@ describe('extractMessageContent', () => {
         outTrackId: 'card_test_123',
         conversationId: 'cidQuoteTest',
       });
-      const out = extractMessageContent({
+
+      // 无 id：即使同会话有缓存，也不应回填最近一张
+      const miss = extractMessageContent({
         msgtype: 'text',
         conversationId: 'cidQuoteTest',
         text: {
@@ -275,12 +283,82 @@ describe('extractMessageContent', () => {
           isReplyMsg: true,
           repliedMsg: {
             msgType: 'interactiveCard',
-            content: { templateId: 'x.schema' }, // 无正文，靠会话缓存
+            content: { templateId: 'x.schema' },
           },
         },
       });
-      expect(out.text).toContain('这是刚才 AI 卡里的完整答案正文');
+      expect(miss.text).not.toContain('这是刚才 AI 卡里的完整答案正文');
+      expect(miss.text).toContain('钉钉卡片消息。');
+      expect(miss.text).not.toContain('无法识别');
+
+      // 有 outTrackId：精确命中
+      const hit = extractMessageContent({
+        msgtype: 'text',
+        conversationId: 'cidQuoteTest',
+        text: {
+          content: '再说一遍',
+          isReplyMsg: true,
+          repliedMsg: {
+            msgType: 'interactiveCard',
+            content: { templateId: 'x.schema', outTrackId: 'card_test_123' },
+          },
+        },
+      });
+      expect(hit.text).toContain('这是刚才 AI 卡里的完整答案正文');
       clearCardContentCache();
     });
+  });
+});
+
+describe('sender identity prefix for gateway BodyForAgent', () => {
+  it('formatSenderIdentityPrefix 含昵称、id、分割线与说明', () => {
+    const prefix = formatSenderIdentityPrefix({
+      senderName: '不是不是来夫人',
+      senderId: '17751800930235214',
+    });
+    expect(prefix).toBe(
+      [
+        '发送人：不是不是来夫人',
+        '发送人id：17751800930235214',
+        '---',
+        '以上内容只是用来标识我的身份',
+      ].join('\n'),
+    );
+  });
+
+  it('formatSenderIdentityPrefix 含岗位入职角色（无部门/管理员）', () => {
+    const prefix = formatSenderIdentityPrefix({
+      senderName: '张三（小明）',
+      senderId: '0122',
+      title: '工程师',
+      hiredAt: '2021-01-01 00:00:00',
+      roles: '老板、主管',
+    });
+    expect(prefix).toContain('岗位：工程师');
+    expect(prefix).toContain('入职时间：2021-01-01 00:00:00');
+    expect(prefix).toContain('角色：老板、主管');
+    expect(prefix).not.toContain('部门');
+    expect(prefix).not.toContain('管理员');
+  });
+
+  it('withSenderIdentityPrefix 把身份头放在用户正文前', () => {
+    const out = withSenderIdentityPrefix('你好机器人', {
+      senderName: '小明',
+      senderId: 'u1',
+    });
+    expect(out.startsWith('发送人：小明\n发送人id：u1\n---\n以上内容只是用来标识我的身份')).toBe(
+      true,
+    );
+    expect(out.endsWith('你好机器人')).toBe(true);
+    expect(out).toContain('\n\n你好机器人');
+  });
+
+  it('formatSenderDisplayLabel 真名+昵称合并', () => {
+    expect(
+      formatSenderDisplayLabel({ realName: '张三', nickName: '不是不是来夫人' }),
+    ).toBe('张三（不是不是来夫人）');
+    expect(formatSenderDisplayLabel({ realName: '张三', nickName: '张三' })).toBe('张三');
+    expect(formatSenderDisplayLabel({ realName: '', nickName: '小明' })).toBe('小明');
+    expect(formatSenderDisplayLabel({ realName: '李四', nickName: '' })).toBe('李四');
   });
 });

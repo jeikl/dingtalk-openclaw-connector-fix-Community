@@ -110,18 +110,229 @@ export async function getOapiAccessToken(config: DingtalkConfig): Promise<string
   }
 }
 
-// ============ 用户 ID 转换 ============
+// ============ 用户资料（真名 / unionId） ============
 
-/** staffId → unionId 缓存（带过期时间的 LRU 缓存） */
-const MAX_UNION_ID_CACHE_SIZE = 1000;
-const UNION_ID_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
+/** staffId → 通讯录资料缓存（带过期时间的 LRU） */
+const MAX_USER_PROFILE_CACHE_SIZE = 1000;
+const USER_PROFILE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时
 
-interface UnionIdCacheEntry {
-  unionId: string;
+export type DingtalkUserProfile = {
+  /** 企业通讯录姓名（通常是真名 / 花名配置的「姓名」字段） */
+  name?: string;
+  unionId?: string;
+  /** 通讯录里的别名（若有） */
+  alias?: string;
+  /** 职位 / 岗位 title */
+  title?: string;
+  /** 入职时间（毫秒时间戳） */
+  hiredDateMs?: number;
+  /** 是否老板 */
+  boss?: boolean;
+  /** 是否部门主管 */
+  leader?: boolean;
+};
+
+interface UserProfileCacheEntry {
+  profile: DingtalkUserProfile;
   timestamp: number;
 }
 
-const unionIdCache = new Map<string, UnionIdCacheEntry>();
+const userProfileCache = new Map<string, UserProfileCacheEntry>();
+
+function pruneUserProfileCache(): void {
+  if (userProfileCache.size < MAX_USER_PROFILE_CACHE_SIZE) return;
+  let oldestKey: string | null = null;
+  let oldestTime = Date.now();
+  for (const [key, entry] of userProfileCache.entries()) {
+    if (entry.timestamp < oldestTime) {
+      oldestTime = entry.timestamp;
+      oldestKey = key;
+    }
+  }
+  if (oldestKey) userProfileCache.delete(oldestKey);
+}
+
+/**
+ * 解析 user/get 类响应里的核心字段（兼容 topapi/v2 的 result.* 与旧版扁平字段）。
+ */
+function parseUserProfilePayload(data: any): DingtalkUserProfile | null {
+  if (!data || typeof data !== "object") return null;
+  if (data.errcode !== undefined && data.errcode !== 0) return null;
+  const result = data.result && typeof data.result === "object" ? data.result : data;
+  const name =
+    (typeof result.name === "string" && result.name.trim()) ||
+    (typeof data.name === "string" && data.name.trim()) ||
+    undefined;
+  const unionId =
+    (typeof result.unionid === "string" && result.unionid.trim()) ||
+    (typeof data.unionid === "string" && data.unionid.trim()) ||
+    undefined;
+  const alias =
+    (typeof result.alias === "string" && result.alias.trim()) ||
+    (typeof data.alias === "string" && data.alias.trim()) ||
+    undefined;
+  const title =
+    (typeof result.title === "string" && result.title.trim()) ||
+    (typeof data.title === "string" && data.title.trim()) ||
+    undefined;
+
+  let hiredDateMs: number | undefined;
+  const hiredRaw = result.hired_date ?? result.hiredDate ?? data.hired_date;
+  if (typeof hiredRaw === "number" && Number.isFinite(hiredRaw) && hiredRaw > 0) {
+    hiredDateMs = hiredRaw;
+  } else if (typeof hiredRaw === "string" && hiredRaw.trim()) {
+    const n = Number(hiredRaw);
+    if (Number.isFinite(n) && n > 0) hiredDateMs = n;
+  }
+
+  const boss = Boolean(result.boss ?? data.boss);
+  const leader = Boolean(result.leader ?? data.leader);
+
+  if (!name && !unionId && !title) return null;
+  return {
+    name,
+    unionId,
+    alias,
+    title,
+    hiredDateMs,
+    boss: boss || undefined,
+    leader: leader || undefined,
+  };
+}
+
+/**
+ * 入职时间毫秒 → Asia/Shanghai 的 `YYYY-MM-DD HH:mm:ss`
+ */
+export function formatHiredDateShanghai(ms?: number | null): string | undefined {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return undefined;
+  const SH_OFFSET_MS = 8 * 60 * 60 * 1000;
+  const d = new Date(Number(ms) + SH_OFFSET_MS);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const h = String(d.getUTCHours()).padStart(2, "0");
+  const mi = String(d.getUTCMinutes()).padStart(2, "0");
+  const s = String(d.getUTCSeconds()).padStart(2, "0");
+  return `${y}-${mo}-${day} ${h}:${mi}:${s}`;
+}
+
+/**
+ * 角色展示：仅老板 / 主管（不含管理员、专属账号）。
+ */
+export function formatSenderRoles(params: {
+  boss?: boolean | null;
+  leader?: boolean | null;
+}): string | undefined {
+  const parts: string[] = [];
+  if (params.boss) parts.push("老板");
+  if (params.leader) parts.push("主管");
+  return parts.length ? parts.join("、") : undefined;
+}
+
+/**
+ * 通过通讯录接口按 userid 拉取用户详情（真名等）。
+ *
+ * 首选：POST `https://oapi.dingtalk.com/topapi/v2/user/get?access_token=...`
+ * body: `{ userid, language: "zh_CN" }` → `result.name` / `result.unionid`
+ *
+ * 鉴权：优先新版 oauth2 accessToken，失败再试 oapi gettoken。
+ * 依赖应用「通讯录只读」等权限；外部成员 / 无权限时失败，调用方回退 senderNick。
+ */
+export async function getUserProfile(
+  staffId: string,
+  config: DingtalkConfig,
+  log?: any,
+): Promise<DingtalkUserProfile | null> {
+  const id = String(staffId || "").trim();
+  if (!id) return null;
+
+  const cached = userProfileCache.get(id);
+  if (cached && Date.now() - cached.timestamp < USER_PROFILE_CACHE_TTL) {
+    return cached.profile;
+  }
+
+  try {
+    // 1) 新版 oauth2 accessToken；2) 旧版 oapi gettoken —— 均可作为 oapi query access_token
+    let token: string | null = null;
+    try {
+      token = await getAccessToken(config);
+    } catch {
+      token = null;
+    }
+    if (!token) {
+      token = await getOapiAccessToken(config);
+    }
+    if (!token) {
+      log?.warn?.("[DingTalk] getUserProfile: 无法获取 access_token");
+      return null;
+    }
+
+    const { dingtalkOapiHttp } = await import("./http-client.ts");
+
+    // 首选：topapi/v2/user/get（官方「按 userid 获取用户详情」）
+    let data: any;
+    try {
+      const resp = await dingtalkOapiHttp.post(
+        `${DINGTALK_OAPI}/topapi/v2/user/get`,
+        { userid: id, language: "zh_CN" },
+        {
+          params: { access_token: token },
+          headers: { "Content-Type": "application/json" },
+          timeout: 10_000,
+        },
+      );
+      data = resp.data || {};
+    } catch (e: any) {
+      log?.warn?.(
+        `[DingTalk] getUserProfile: topapi/v2/user/get 请求失败，尝试旧版 /user/get: ${e?.message || e}`,
+      );
+      data = null;
+    }
+
+    let profile = data ? parseUserProfilePayload(data) : null;
+    if (!profile && data && data.errcode !== undefined && data.errcode !== 0) {
+      log?.warn?.(
+        `[DingTalk] getUserProfile: topapi/v2 errcode=${data.errcode} errmsg=${data.errmsg || ""} staffId=${id}`,
+      );
+    }
+
+    // 兜底：旧版 GET /user/get（扁平 name/unionid）
+    if (!profile) {
+      try {
+        const resp = await dingtalkOapiHttp.get(`${DINGTALK_OAPI}/user/get`, {
+          params: { access_token: token, userid: id },
+          timeout: 10_000,
+        });
+        data = resp.data || {};
+        profile = parseUserProfilePayload(data);
+        if (!profile && data.errcode !== undefined && data.errcode !== 0) {
+          log?.warn?.(
+            `[DingTalk] getUserProfile: /user/get errcode=${data.errcode} errmsg=${data.errmsg || ""} staffId=${id}`,
+          );
+        }
+      } catch (e: any) {
+        log?.warn?.(`[DingTalk] getUserProfile: 旧版 /user/get 失败: ${e?.message || e}`);
+      }
+    }
+
+    if (!profile) {
+      log?.warn?.(
+        `[DingTalk] getUserProfile: 无法解析用户资料 staffId=${id} raw=${JSON.stringify(data || {}).slice(0, 300)}`,
+      );
+      return null;
+    }
+
+    pruneUserProfileCache();
+    userProfileCache.set(id, { profile, timestamp: Date.now() });
+    log?.info?.(
+      `[DingTalk] getUserProfile: ${id} → name=${profile.name || "-"} unionId=${profile.unionId || "-"}`,
+    );
+    return profile;
+  } catch (err: any) {
+    log?.warn?.(`[DingTalk] getUserProfile 失败: ${err?.message || err}`);
+    return null;
+  }
+}
 
 /**
  * 通过 oapi 旧版接口将 staffId 转换为 unionId
@@ -131,53 +342,23 @@ export async function getUnionId(
   config: DingtalkConfig,
   log?: any,
 ): Promise<string | null> {
-  // 检查缓存
-  const cached = unionIdCache.get(staffId);
-  if (cached && Date.now() - cached.timestamp < UNION_ID_CACHE_TTL) {
-    return cached.unionId;
-  }
+  const profile = await getUserProfile(staffId, config, log);
+  return profile?.unionId || null;
+}
 
-  try {
-    const token = await getOapiAccessToken(config);
-    if (!token) {
-      log?.error?.('[DingTalk] getUnionId: 无法获取 oapi access_token');
-      return null;
-    }
-    const { dingtalkOapiHttp } = await import('./http-client.ts');
-    const resp = await dingtalkOapiHttp.get(`${DINGTALK_OAPI}/user/get`, {
-      params: { access_token: token, userid: staffId },
-      timeout: 10_000,
-    });
-    const unionId = resp.data?.unionid;
-    if (unionId) {
-      // 写入缓存前检查大小
-      if (unionIdCache.size >= MAX_UNION_ID_CACHE_SIZE) {
-        // 删除最旧的条目
-        let oldestKey: string | null = null;
-        let oldestTime = Date.now();
-        
-        for (const [key, entry] of unionIdCache.entries()) {
-          if (entry.timestamp < oldestTime) {
-            oldestTime = entry.timestamp;
-            oldestKey = key;
-          }
-        }
-        
-        if (oldestKey) {
-          unionIdCache.delete(oldestKey);
-        }
-      }
-      
-      unionIdCache.set(staffId, { unionId, timestamp: Date.now() });
-      log?.info?.(`[DingTalk] getUnionId: ${staffId} → ${unionId}`);
-      return unionId;
-    }
-    log?.error?.(`[DingTalk] getUnionId: 响应中无 unionid 字段: ${JSON.stringify(resp.data)}`);
-    return null;
-  } catch (err: any) {
-    log?.error?.(`[DingTalk] getUnionId 失败: ${err.message}`);
-    return null;
-  }
+/**
+ * 拼发送人展示名：优先通讯录真名，可附带昵称。
+ * - 真名+昵称且不同 → `真名（昵称）`
+ * - 仅有其一 → 用有的那个
+ */
+export function formatSenderDisplayLabel(params: {
+  realName?: string | null;
+  nickName?: string | null;
+}): string {
+  const real = String(params.realName || "").trim();
+  const nick = String(params.nickName || "").trim();
+  if (real && nick && real !== nick) return `${real}（${nick}）`;
+  return real || nick || "未知";
 }
 
 // ============ 消息去重 ============

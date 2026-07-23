@@ -39,6 +39,10 @@ import {
   buildSessionContext,
   getAccessToken,
   getOapiAccessToken,
+  getUserProfile,
+  formatSenderDisplayLabel,
+  formatHiredDateShanghai,
+  formatSenderRoles,
   DINGTALK_API,
   DINGTALK_OAPI,
   addEmotionReply,
@@ -334,7 +338,8 @@ function extractQuotedMsgText(
         contentObj?.biz_custom_action_url || repliedMsg.biz_custom_action_url || '';
       let cardText = extractTextFromCardLikeContent(contentObj, repliedMsg);
 
-      // 钉钉引用 AI 卡时常无正文：用我们定稿时缓存的 outTrackId / 会话最近卡 回填
+      // 钉钉引用 AI 卡时常无正文：仅用载荷里的 outTrackId / msgId 等精确命中缓存，
+      // 不再回退「会话最近一张卡」（会张冠李戴）。
       if (!cardText) {
         try {
           const ids = collectCardLookupIds(repliedMsg, contentObj);
@@ -342,17 +347,17 @@ function extractQuotedMsgText(
             lookupCardContent({
               ids,
               conversationId,
-              allowConversationRecent: true,
+              allowConversationRecent: false,
             }) || '';
           if (cardText) {
             console.log(
-              `[DingTalk][Quote] interactiveCard 已从 CardCache 回填 | ids=${ids.join(',') || '-'} len=${cardText.length}`,
+              `[DingTalk][Quote] interactiveCard 已从 CardCache 精确回填 | ids=${ids.join(',') || '-'} len=${cardText.length}`,
             );
           } else {
             // 强制 dump 载荷，便于确认钉钉到底给了哪些字段
             const dump = JSON.stringify(repliedMsg ?? {}).slice(0, 800);
             console.log(
-              `[DingTalk][Quote] interactiveCard 无正文且缓存未命中 | conv=${conversationId || '-'} keys=${Object.keys(contentObj || {}).join(',')} repliedMsg=${dump}`,
+              `[DingTalk][Quote] interactiveCard 无正文且缓存未命中（未使用会话最近兜底） | conv=${conversationId || '-'} keys=${Object.keys(contentObj || {}).join(',')} repliedMsg=${dump}`,
             );
           }
         } catch (e: any) {
@@ -365,15 +370,8 @@ function extractQuotedMsgText(
       } else if (cardUrl) {
         bodyText = `收到交互式卡片链接：${cardUrl}`;
       } else {
-        const hint =
-          contentObj?.templateId ||
-          contentObj?.cardTemplateId ||
-          contentObj?.outTrackId ||
-          repliedMsg?.msgId ||
-          '';
-        bodyText = hint
-          ? `[卡片消息，引用载荷无正文且本地缓存未命中；id=${String(hint).slice(0, 64)}。请确保机器人定稿后未重启，或改用 message 普通消息便于引用]`
-          : '[卡片消息，引用载荷无正文且本地缓存未命中。钉钉引用 AI 卡通常不带正文，需插件缓存回填]';
+        // 钉钉引用 AI 卡通常不带正文；保持简短，由上层拼成「[引用] 钉钉卡片消息。」
+        bodyText = "钉钉卡片消息。";
       }
       break;
     }
@@ -381,19 +379,27 @@ function extractQuotedMsgText(
       bodyText =
         extractTextFromCardLikeContent(contentObj, repliedMsg) ||
         `[${msgType}消息]`;
-      // 未知类型也尝试缓存回填（部分环境 msgType 不是 interactiveCard）
+      // 未知类型也尝试缓存回填（部分环境 msgType 不是 interactiveCard）；仅精确 id，不兜底最近卡
       if (bodyText === `[${msgType}消息]`) {
         try {
           const ids = collectCardLookupIds(repliedMsg, contentObj);
           const cached = lookupCardContent({
             ids,
             conversationId,
-            allowConversationRecent: true,
+            allowConversationRecent: false,
           });
           if (cached) {
             bodyText = cached;
             console.log(
-              `[DingTalk][Quote] msgType=${msgType} 已从 CardCache 回填 | len=${cached.length}`,
+              `[DingTalk][Quote] msgType=${msgType} 已从 CardCache 精确回填 | ids=${ids.join(',') || '-'} len=${cached.length}`,
+            );
+          } else if (
+            /card|interactive/i.test(String(msgType || "")) ||
+            ids.length > 0
+          ) {
+            bodyText = "钉钉卡片消息。";
+            console.log(
+              `[DingTalk][Quote] 未知卡片类引用 msgType=${msgType} 已简化占位 | keys=${Object.keys(contentObj || {}).join(',')}`,
             );
           } else {
             console.log(
@@ -525,6 +531,46 @@ function extractRepliedMsgMediaAttachments(
   }
 
   return { imageUrls, downloadCodes, fileNames };
+}
+
+export type SenderIdentityFields = {
+  senderName?: string | null;
+  senderId?: string | null;
+  /** 岗位 title */
+  title?: string | null;
+  /** 入职时间展示串 YYYY-MM-DD HH:mm:ss */
+  hiredAt?: string | null;
+  /** 角色展示：老板、主管（不含管理员） */
+  roles?: string | null;
+};
+
+/**
+ * 推给网关 / agent 时前置的身份标识块。
+ * 缺字段省略整行；不含部门 / 管理员 / 专属账号。
+ * RawBody / CommandBody 仍用纯用户原文，不带这段。
+ */
+export function formatSenderIdentityPrefix(params: SenderIdentityFields): string {
+  const name = String(params.senderName || "").trim() || "未知";
+  const id = String(params.senderId || "").trim() || "未知";
+  const lines = [`发送人：${name}`, `发送人id：${id}`];
+  const title = String(params.title || "").trim();
+  if (title) lines.push(`岗位：${title}`);
+  const hiredAt = String(params.hiredAt || "").trim();
+  if (hiredAt) lines.push(`入职时间：${hiredAt}`);
+  const roles = String(params.roles || "").trim();
+  if (roles) lines.push(`角色：${roles}`);
+  lines.push("---", "以上内容只是用来标识我的身份");
+  return lines.join("\n");
+}
+
+/** 在用户消息前拼上身份头，供 Body / BodyForAgent 使用。 */
+export function withSenderIdentityPrefix(
+  body: string,
+  params: SenderIdentityFields,
+): string {
+  const prefix = formatSenderIdentityPrefix(params);
+  const content = typeof body === "string" ? body : "";
+  return content ? `${prefix}\n\n${content}` : prefix;
 }
 
 export function extractMessageContent(data: any): ExtractedMessage {
@@ -1164,7 +1210,41 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
 
   const isDirect = data.conversationType === '1';
   const senderId = data.senderStaffId || data.senderId;
-  const senderName = data.senderNick || 'Unknown';
+  const senderNick = data.senderNick || '';
+  // 默认用回调昵称；通讯录 API 能取到真名/岗位/部门等再覆盖
+  let senderName = senderNick || 'Unknown';
+  let senderTitle: string | undefined;
+  let senderHiredAt: string | undefined;
+  let senderRoles: string | undefined;
+
+  // 有企业 userid（senderStaffId）时，尝试拉通讯录详情（真名/岗位/入职/老板主管）
+  const staffIdForProfile =
+    data.senderStaffId ||
+    (senderId && !String(senderId).startsWith('$:') ? senderId : null);
+  if (staffIdForProfile) {
+    try {
+      const profile = await getUserProfile(String(staffIdForProfile), config, log);
+      if (profile) {
+        if (profile.name) {
+          senderName = formatSenderDisplayLabel({
+            realName: profile.name,
+            nickName: senderNick,
+          });
+        }
+        if (profile.title) senderTitle = profile.title;
+        senderHiredAt = formatHiredDateShanghai(profile.hiredDateMs);
+        senderRoles = formatSenderRoles({
+          boss: profile.boss,
+          leader: profile.leader,
+        });
+        log?.info?.(
+          `[DingTalk] 发送人资料: staffId=${staffIdForProfile} name=${senderName} title=${senderTitle || '-'} hired=${senderHiredAt || '-'} roles=${senderRoles || '-'}`,
+        );
+      }
+    } catch (e: any) {
+      log?.warn?.(`[DingTalk] 解析发送人资料失败，回退昵称: ${e?.message || e}`);
+    }
+  }
 
 
 
@@ -1575,6 +1655,15 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
       finalContent = finalContent ? `${finalContent}\n\n${imageMarkdown}` : imageMarkdown;
     }
 
+    // 推给网关的 agent 可见正文：前置发送人身份（RawBody/CommandBody 仍用纯用户原文）
+    const agentBody = withSenderIdentityPrefix(finalContent, {
+      senderName,
+      senderId,
+      title: senderTitle,
+      hiredAt: senderHiredAt,
+      roles: senderRoles,
+    });
+
     // 构建 envelope 格式的消息
     const envelopeOptions = core.channel.reply.resolveEnvelopeFormatOptions(cfg);
     const envelopeFrom = isDirect ? senderId : `${data.conversationId}:${senderId}`;
@@ -1584,7 +1673,7 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
       from: envelopeFrom,
       timestamp: new Date(),
       envelope: envelopeOptions,
-      body: finalContent,
+      body: agentBody,
     });
 
     // matchedAgentId 已在 sessionContext 构建之后通过 bindings 匹配确定，此处直接使用
@@ -1617,7 +1706,7 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
 
     const ctxPayload = core.channel.reply.finalizeInboundContext({
       Body: body,
-      BodyForAgent: finalContent,
+      BodyForAgent: agentBody,
       RawBody: userContent,
       CommandBody: userContent,
       From: senderId,
