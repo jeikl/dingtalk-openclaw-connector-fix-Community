@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.8.25] - 2026-07-24
 
 ### 修复与优化 / Fixed & Improved
+- ✨ **发送人身份与岗位信息** — 消息推送给 Agent 时自动前置发送人真名、岗位 (Title)、入职时间及角色（老板/主管）。
 - 🐛 **无前缀裸钉钉 ID 推导** — 自动将无前缀裸钉钉用户 ID 正确推导为 `direct`（单聊）类型。
 - 🛠️ **消息处理器与发送工具** — 优化消息响应调度与发送工具底层逻辑。
 
