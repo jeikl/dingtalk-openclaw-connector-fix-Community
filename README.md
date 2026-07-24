@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix49</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix49.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.25</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.25.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,19 +23,22 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.21-fix49 · 2026-07-21（当前）
+### 🚀 v0.8.25 · 2026-07-24（当前正式版）
 
-**主题：message 工具默认答案卡（可关）**
+**主题：目标 ID 智能推导 + 消息管道逻辑优化**
 
 | | 改动 |
 |--|------|
-| ✨ **`messageAnswerCard`** | **默认 `true`**：message 正文走答案静态卡；`false` 恢复普通 text/markdown |
-| 🔧 **注册** | `schema` + `openclaw.plugin.json`（channels / accounts / uiHints） |
-| 📎 **独立** | 与会话流式 `answerCard` 分开；媒体消息仍普通通道 |
+| 🎯 **`targets` 解析修复** | 无前缀裸钉钉用户 ID 自动智能推导为 `direct`（单聊）类型 |
+| 🛠️ **消息处理增强** | 消息处理器底层逻辑优化与工具库稳定性提升 |
 
 ```bash
 npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
+
+### 📦 v0.8.21-fix49 · 2026-07-21
+
+`message` 工具默认答案卡（可关）；增强模板字段一致。
 
 ### 📦 v0.8.21-fix47 · 2026-07-20
 

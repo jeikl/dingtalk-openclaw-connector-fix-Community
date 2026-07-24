@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.25] - 2026-07-24
+
+### 修复与优化 / Fixed & Improved
+- 🐛 **无前缀裸钉钉 ID 推导** — 自动将无前缀裸钉钉用户 ID 正确推导为 `direct`（单聊）类型。
+- 🛠️ **消息处理器与发送工具** — 优化消息响应调度与发送工具底层逻辑。
+
+### 安装 / Install
+```bash
+npm install -g @jeik/dingtalk-connector@0.8.25
+```
+
 ## [0.8.21-fix49] - 2026-07-21
 
 ### 变更 / Changed
