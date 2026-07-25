@@ -37,10 +37,6 @@
 | ⚠️ **模型故障** | 503 / 欠费 / 无通道等更容易定格中文错误，少卡「正在召唤大模型」 |
 | 🃏 **本仓库独有** | 答案卡、图片全路径、首响体验等继续保留 |
 
-```bash
-npx @jeik/dingtalk-connector install --force && openclaw gateway restart
-```
-
 ### 📦 v0.8.28 · 2026-07-25
 
 基于官方 0.8.24 的长连接与消息体验加固（当前能力已并入 0.8.29）。
@@ -51,45 +47,65 @@ npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
 ---
 
-## ✨ 增强功能
+## 🚀 快速开始
 
-### 🖼️ 图片发送：全面修复与增强
+### 要求
 
-> 🔥 **毫无死角** · 混合发图 · 全面碾压官方薄弱的图片机制  
-> ✅ 对话发图 · ✅ message 直发 · ✅ markdown 嵌图 · ✅ 文图可分可合
+- **OpenClaw** 已安装并正常运行（[官网](https://openclaw.ai/)）
+- **版本**：OpenClaw ≥ **2026.4.9**（`openclaw -v`）
+- 与官方插件同 channel id（`dingtalk-connector`），`--force` 可直接覆盖，**无需先卸载**
+- 安装/更新后**必须** `openclaw gateway restart`
 
-对官方图片发送做了**全路径修复增强**，多通道混合发图，全部显示正常：
+包名：[`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
-| | 发送方式 | 能力 |
-|--|----------|------|
-| 💬 | **普通对话回复** | Agent 用 `![注释](…)` 嵌图，定稿前自动上传 mediaId |
-| 📤 | **message · mediaUrl** | 机器人主动触发直发（本地 / 内网 / 公网） |
-| 📝 | **message · markdown 正文** | 正文嵌 `![](…)`（本地 / `file://` / 直链）与文字同条 |
-| ⚙️ | **文图策略可配** | 默认 📎 **分开**；`messageImageMd: true` → 🧩 **合并**一条 markdown |
+### A）npx 一键扫码安装（按顺序试）
 
-#### 🌐 路径与协议全覆盖
+```bash
+# 1）装最新
+npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
-| | 类型 | 示例 |
-|--|------|------|
-| 🌍 | 公网直链 | `https://…` |
-| 🏠 | 内网直链 | `http://内网主机/…` |
-| 📁 | 本地绝对路径 | `/tmp/…` · `/root/…` |
-| 💾 | **`/mnt` 挂载盘** | 中文目录 · 共享盘 · SMB |
-| 🔗 | `file://` URI | `file:///mnt/…` · `file:///tmp/…` |
-| 🆔 | 已有 mediaId | `@lADP…` |
+# 2）若装到的不是最新，指定版本号
+npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
 
-#### 🛡️ 细节兜底
+# 3）若仍装不了，强制走 npm 官方源
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
+```
 
-- 📦 代码块 / 行内 code 路径 **不会误上传**（参数说明原文保留）
-- ⬇️ 远程图 **先下载再上传**；本地失败会 **`/tmp` 重试**
-- 🫧 图 + 下载链接 **同泡共存**：`![]` → mediaId，下载 URL 仍是原链
+### B）只装插件（凭证已配好时，按顺序试）
 
-### 🎨 AI Card 模板
+```bash
+# 1）装最新
+openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
 
-- ✨ 支持自定义流式卡；**不填 `cardTemplateId` 默认**  
-  `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema`（含 📋 复制按钮等）
+# 2）若装到的不是最新，指定版本号
+openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
 
-### ⚙️ 最小配置（够跑）
+# 3）若仍装不了，强制走 npm 官方源
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
+```
+
+### 本地 tgz / 源码（开发、离线）
+
+```bash
+git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
+cd dingtalk-openclaw-connector-fix-Community
+npm install && npm run build && npm pack
+openclaw plugins install ./jeik-dingtalk-connector-0.8.29.tgz --force && openclaw gateway restart
+```
+
+### 安装后自检
+
+```bash
+openclaw -v                    # ≥ 2026.4.9
+openclaw plugins list          # 应看到 dingtalk-connector / @jeik/dingtalk-connector
+# 发一条钉钉消息：应先「正在召唤大模型…」，再流式/答案卡
+```
+
+---
+
+## ⚙️ 配置
+
+### 最小配置（够跑）
 
 ```json
 "channels": {
@@ -106,8 +122,6 @@ npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 > **最大化配置 ≡ 最小化配置。** 下面只是把默认值显式写出来，方便对照字段含义；效果与只填凭证的最小配置相同，生产环境直接用最小配置即可。
 
 ### 最大化配置（展示用，默认值写全）
-
-按单 Agent / 多 Agent 两种写法（值均为默认，**不等于额外能力**）。
 
 **单 Agent（顶层凭证）：**
 
@@ -202,7 +216,45 @@ npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
 ---
 
-## 🎯 回复标记 + 答案卡 + 工具进度（核心增强）
+## ✨ 增强功能
+
+### 🖼️ 图片发送：全面修复与增强
+
+> 🔥 **毫无死角** · 混合发图 · 全面碾压官方薄弱的图片机制  
+> ✅ 对话发图 · ✅ message 直发 · ✅ markdown 嵌图 · ✅ 文图可分可合
+
+对官方图片发送做了**全路径修复增强**，多通道混合发图，全部显示正常：
+
+| | 发送方式 | 能力 |
+|--|----------|------|
+| 💬 | **普通对话回复** | Agent 用 `![注释](…)` 嵌图，定稿前自动上传 mediaId |
+| 📤 | **message · mediaUrl** | 机器人主动触发直发（本地 / 内网 / 公网） |
+| 📝 | **message · markdown 正文** | 正文嵌 `![](…)`（本地 / `file://` / 直链）与文字同条 |
+| ⚙️ | **文图策略可配** | 默认 📎 **分开**；`messageImageMd: true` → 🧩 **合并**一条 markdown |
+
+#### 🌐 路径与协议全覆盖
+
+| | 类型 | 示例 |
+|--|------|------|
+| 🌍 | 公网直链 | `https://…` |
+| 🏠 | 内网直链 | `http://内网主机/…` |
+| 📁 | 本地绝对路径 | `/tmp/…` · `/root/…` |
+| 💾 | **`/mnt` 挂载盘** | 中文目录 · 共享盘 · SMB |
+| 🔗 | `file://` URI | `file:///mnt/…` · `file:///tmp/…` |
+| 🆔 | 已有 mediaId | `@lADP…` |
+
+#### 🛡️ 细节兜底
+
+- 📦 代码块 / 行内 code 路径 **不会误上传**（参数说明原文保留）
+- ⬇️ 远程图 **先下载再上传**；本地失败会 **`/tmp` 重试**
+- 🫧 图 + 下载链接 **同泡共存**：`![]` → mediaId，下载 URL 仍是原链
+
+### 🎨 AI Card 模板
+
+- ✨ 支持自定义流式卡；**不填 `cardTemplateId` 默认**  
+  `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema`（含 📋 复制按钮等）
+
+### 🎯 回复标记 + 答案卡 + 工具进度
 
 这套机制让钉钉侧的「过程 → 最终答案」渲染更干净、更稳定，规避钉钉流式 AI Card 的官方渲染 bug：
 
@@ -239,60 +291,6 @@ npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 | 基础版本 | 对齐官方 **v0.8.24** 长连接能力，并叠加本仓库独有优化 |
 | 修复内容 | 连接假死、消息丢失、错误卡卡住、图片灰图等实际使用问题 |
 | 维护方式 | 社区维护，持续跟进官方更新 |
-
----
-
-## 安装与要求
-
-- **OpenClaw** 已安装并正常运行（[官网](https://openclaw.ai/)）
-- **版本**：OpenClaw ≥ **2026.4.9**（`openclaw -v`）
-- 与官方插件同 channel id（`dingtalk-connector`），`--force` 可直接覆盖，**无需先卸载**
-- 安装/更新后**必须** `openclaw gateway restart`
-
-包名：[`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
-
-### A）npx 一键扫码安装（按顺序试）
-
-```bash
-# 1）装最新
-npx @jeik/dingtalk-connector install --force && openclaw gateway restart
-
-# 2）若装到的不是最新，指定版本号
-npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
-
-# 3）若仍装不了，强制走 npm 官方源
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
-```
-
-### B）只装插件（凭证已配好时，按顺序试）
-
-```bash
-# 1）装最新
-openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
-
-# 2）若装到的不是最新，指定版本号
-openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
-
-# 3）若仍装不了，强制走 npm 官方源
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
-```
-
-### 本地 tgz / 源码（开发、离线）
-
-```bash
-git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
-cd dingtalk-openclaw-connector-fix-Community
-npm install && npm run build && npm pack
-openclaw plugins install ./jeik-dingtalk-connector-0.8.29.tgz --force && openclaw gateway restart
-```
-
-### 安装后自检
-
-```bash
-openclaw -v                    # ≥ 2026.4.9
-openclaw plugins list          # 应看到 dingtalk-connector / @jeik/dingtalk-connector
-# 发一条钉钉消息：应先「正在召唤大模型…」，再流式/答案卡
-```
 
 ---
 

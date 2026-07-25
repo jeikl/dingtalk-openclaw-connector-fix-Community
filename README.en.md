@@ -37,10 +37,6 @@ Built on **0.8.28** (steadier connection / fewer lost messages / clearer error c
 | ⚠️ **Model failures** | 503 / billing / no-channel settle to clear Chinese cards instead of spinning forever |
 | 🃏 **This repo’s unique extras** | Answer cards, full image paths, first-response UX remain |
 
-```bash
-npx @jeik/dingtalk-connector install --force && openclaw gateway restart
-```
-
 ### 📦 v0.8.28 · 2026-07-25
 
 Official 0.8.24-aligned connection & delivery hardening (included in 0.8.29).
@@ -51,45 +47,65 @@ Target ID rules, sender identity, answer cards, image fixes — see [CHANGELOG.m
 
 ---
 
-## ✨ Enhanced Features
+## 🚀 Quick Start
 
-### 🖼️ Image sending: full fix & upgrade
+### Requirements
 
-> 🔥 **No dead corners** · mixed send paths · far beyond the official’s weak image pipeline  
-> ✅ Chat · ✅ message direct · ✅ markdown embed · ✅ split or merge layout
+- **OpenClaw** installed and running ([website](https://openclaw.ai/))
+- **Version**: OpenClaw ≥ **2026.4.9** (`openclaw -v`)
+- Same channel id as official (`dingtalk-connector`); `--force` overwrites — **no uninstall** needed
+- Always `openclaw gateway restart` after install/upgrade
 
-Full-path image fixes — every channel below renders correctly:
+Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
-| | Path | Capability |
-|--|------|------------|
-| 💬 | **Normal chat reply** | Agent embeds `![alt](…)`; upload to mediaId before finalize |
-| 📤 | **message · mediaUrl** | Proactive direct send (local / LAN / public) |
-| 📝 | **message · markdown body** | Nested `![](…)` (local / `file://` / URL) with text |
-| ⚙️ | **Configurable layout** | Default 📎 **separate**; `messageImageMd: true` → 🧩 **merge** one markdown |
+### A) npx one-command QR install (try in order)
 
-#### 🌐 Source types covered
+```bash
+# 1) Install latest
+npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
-| | Type | Examples |
-|--|------|----------|
-| 🌍 | Public URL | `https://…` |
-| 🏠 | Private / LAN URL | `http://intranet/…` |
-| 📁 | Local absolute path | `/tmp/…` · `/root/…` |
-| 💾 | **`/mnt` mounts** | Chinese paths · SMB shares |
-| 🔗 | `file://` URI | `file:///mnt/…` · `file:///tmp/…` |
-| 🆔 | Existing mediaId | `@lADP…` |
+# 2) If you did not get the latest, pin the version
+npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
 
-#### 🛡️ Extra safeguards
+# 3) If it still fails, force the official npm registry
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
+```
 
-- 📦 Code-block / inline-code paths are **not** uploaded
-- ⬇️ Remote: **download then upload**; local: **`/tmp` retry** on failure
-- 🫧 Image + download link in **one bubble**: `![]` → mediaId, URL kept as-is
+### B) Plugin only (credentials already set; try in order)
 
-### 🎨 AI Card template
+```bash
+# 1) Install latest
+openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
 
-- ✨ Custom stream cards; **if `cardTemplateId` is omitted**, defaults to  
-  `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` (📋 copy button, etc.)
+# 2) If you did not get the latest, pin the version
+openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
 
-### ⚙️ Minimal config
+# 3) If it still fails, force the official npm registry
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
+```
+
+### Local tgz / from source (dev / offline)
+
+```bash
+git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
+cd dingtalk-openclaw-connector-fix-Community
+npm install && npm run build && npm pack
+openclaw plugins install ./jeik-dingtalk-connector-0.8.29.tgz --force && openclaw gateway restart
+```
+
+### Smoke check
+
+```bash
+openclaw -v
+openclaw plugins list
+# Send a DingTalk message — first “summoning model…”, then streaming / answer card
+```
+
+---
+
+## ⚙️ Configuration
+
+### Minimal config
 
 ```json
 "channels": {
@@ -106,8 +122,6 @@ Defaults apply: stream card `0d2c84b3-…schema`, session answer card on, messag
 > **Maximal config ≡ minimal config.** The blocks below only spell out defaults so the fields are easier to understand. Behavior is the same as the credential-only minimal config — use minimal in production.
 
 ### Maximal config (for illustration; defaults written out)
-
-**Single Agent** and **multi Agent** (all values are defaults — **not extra features**).
 
 **Single Agent (top-level credentials):**
 
@@ -183,12 +197,64 @@ Defaults apply: stream card `0d2c84b3-…schema`, session answer card on, messag
 | `answerCardTemplateId` | string | `d246b7f5-1783-4e9b-bb46-bef52d63050e.schema` | Static answer card template |
 | `messageAnswerCard` | boolean | **true** | message-tool body via answer card; `false` = plain message |
 | `messageImageMd` | boolean | **false** | message images: separate vs merge markdown |
+| `debug` | boolean | **false** | Verbose diagnostics (connection / image mediaId / quote / queue). **Off in production**; set `true` then restart gateway |
 
 > `answerCard` = conversation finalize; `messageAnswerCard` = message-tool outbound.
 
+**Temporary debug example:**
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "clientId": "…",
+    "clientSecret": "…",
+    "debug": true
+  }
+}
+```
+
 ---
 
-## 🎯 Reply markers + Answer card + Tool progress (core enhancements)
+## ✨ Enhanced Features
+
+### 🖼️ Image sending: full fix & upgrade
+
+> 🔥 **No dead corners** · mixed send paths · far beyond the official’s weak image pipeline  
+> ✅ Chat · ✅ message direct · ✅ markdown embed · ✅ split or merge layout
+
+Full-path image fixes — every channel below renders correctly:
+
+| | Path | Capability |
+|--|------|------------|
+| 💬 | **Normal chat reply** | Agent embeds `![alt](…)`; upload to mediaId before finalize |
+| 📤 | **message · mediaUrl** | Proactive direct send (local / LAN / public) |
+| 📝 | **message · markdown body** | Nested `![](…)` (local / `file://` / URL) with text |
+| ⚙️ | **Configurable layout** | Default 📎 **separate**; `messageImageMd: true` → 🧩 **merge** one markdown |
+
+#### 🌐 Source types covered
+
+| | Type | Examples |
+|--|------|----------|
+| 🌍 | Public URL | `https://…` |
+| 🏠 | Private / LAN URL | `http://intranet/…` |
+| 📁 | Local absolute path | `/tmp/…` · `/root/…` |
+| 💾 | **`/mnt` mounts** | Chinese paths · SMB shares |
+| 🔗 | `file://` URI | `file:///mnt/…` · `file:///tmp/…` |
+| 🆔 | Existing mediaId | `@lADP…` |
+
+#### 🛡️ Extra safeguards
+
+- 📦 Code-block / inline-code paths are **not** uploaded
+- ⬇️ Remote: **download then upload**; local: **`/tmp` retry** on failure
+- 🫧 Image + download link in **one bubble**: `![]` → mediaId, URL kept as-is
+
+### 🎨 AI Card template
+
+- ✨ Custom stream cards; **if `cardTemplateId` is omitted**, defaults to  
+  `0d2c84b3-12c1-473b-b14a-f329a7a102cd.schema` (📋 copy button, etc.)
+
+### 🎯 Reply markers + Answer card + Tool progress
 
 These make the "process → final answer" rendering on DingTalk cleaner and more stable, working around DingTalk's official streaming AI Card bug:
 
@@ -221,64 +287,6 @@ Community contributions (features & bug fixes) are always welcome — submit a P
 | Base | Aligned with official **v0.8.24** long-connection work + this repo’s unique extras |
 | Fixes | Silent connection, lost messages, stuck error cards, grey images, etc. |
 | Maintenance | Community maintained, continuously tracking official updates |
-
----
-
-## Requirements & Installation
-
-- **OpenClaw** installed and running ([website](https://openclaw.ai/))
-- **Version**: OpenClaw ≥ **2026.4.9** (`openclaw -v`)
-- Same channel id as official (`dingtalk-connector`); `--force` overwrites — **no uninstall** needed
-- Always `openclaw gateway restart` after install/upgrade
-
-Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
-
-### A) npx one-command QR install (try in order)
-
-```bash
-# 1) Install latest
-npx @jeik/dingtalk-connector install --force && openclaw gateway restart
-
-# 2) If you did not get the latest, pin the version
-npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
-
-# 3) If it still fails, force the official npm registry
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
-```
-
-### B) Plugin only (credentials already set; try in order)
-
-```bash
-# 1) Install latest
-openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
-
-# 2) If you did not get the latest, pin the version
-openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
-
-# 3) If it still fails, force the official npm registry
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
-```
-
-### Local tgz / from source (dev / offline)
-
-```bash
-git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
-cd dingtalk-openclaw-connector-fix-Community
-npm install && npm run build && npm pack
-openclaw plugins install ./jeik-dingtalk-connector-0.8.29.tgz --force && openclaw gateway restart
-```
-
-### Smoke check
-
-```bash
-openclaw -v
-openclaw plugins list
-# Send a DingTalk message — first “summoning model…”, then streaming / answer card
-```
-
-### Debug logs
-
-Set `"debug": true` under `channels.dingtalk-connector` (or a specific account), then restart the gateway. No environment variables required.
 
 ---
 
