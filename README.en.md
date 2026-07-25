@@ -2,7 +2,7 @@
   <img alt="DingTalk" src="https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-openclaw-connector/main/docs/images/dingtalk.svg" width="72" height="72" />
   <h1>dingtalk-openclaw-connector（Community Maintained Fork）</h1>
   <p>Community-enhanced fork based on official <strong>v0.8.24</strong>: adopts official long-connection improvements, plus stronger message delivery, queue feedback, and error-card UX.<br/>
-  Keeps community extras (images, answer cards, first-response UX) and continues to fix issues not yet covered upstream.</p>
+  Keeps <strong>this repo’s unique</strong> extras (images, answer cards, first-response UX) and continues to fix issues not yet covered upstream.</p>
 
   <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.28</strong> (recommended for production; install: <code>npx -y @jeik/dingtalk-connector@0.8.28 install --force</code>).</p>
 
@@ -27,7 +27,7 @@
 
 **Theme: based on official 0.8.24 · steadier connection · fewer lost messages · clearer errors**
 
-Built on community enhancements, aligned with official **0.8.24** connection work, and focused on real UX: “sent but no reply”, stuck error cards, and missing “queued” feedback.
+Built on **this repo’s unique** enhancements, aligned with official **0.8.24** connection work, and focused on real UX: “sent but no reply”, stuck error cards, and missing “queued” feedback.
 
 #### From official 0.8.24
 
@@ -35,7 +35,7 @@ Built on community enhancements, aligned with official **0.8.24** connection wor
 - Long AI runs less likely to get cut mid-task by connection flapping
 - Cleaner console logs for easier ops
 
-#### Extra community improvements (what you’ll notice)
+#### Extra improvements in this repo (what you’ll notice)
 
 | Experience | Effect |
 |------------|--------|
@@ -43,7 +43,7 @@ Built on community enhancements, aligned with official **0.8.24** connection wor
 | 📩 **Fewer lost messages** | Much better after errors, after a reply finishes, or when sending several messages quickly |
 | ⏳ **Queue feedback** | While the previous message is still running, new messages more reliably show “queued / processing” + thinking reaction |
 | ⚠️ **Model failures** | Billing / no channel / 503-style failures settle into clear Chinese error cards instead of spinning forever |
-| 🃏 **Answer cards & images** | Existing community answer-card and full image-path fixes remain |
+| 🃏 **Answer cards & images** | **Unique to this repo** — large-answer cards, full image-path fixes, etc. remain |
 
 ```bash
 npx -y @jeik/dingtalk-connector@0.8.28 install --force && openclaw gateway restart
