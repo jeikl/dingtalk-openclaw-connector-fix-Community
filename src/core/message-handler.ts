@@ -66,7 +66,7 @@ import { createDingtalkReplyDispatcher, matchModelErrorText } from "../reply-dis
 import { normalizeSlashCommand } from "../utils/session.ts";
 import { getDingtalkRuntime } from "../runtime.ts";
 import { dingtalkHttp } from '../utils/http-client.ts';
-import { createLoggerFromConfig } from '../utils/index.ts';
+import { createLoggerFromConfig, isDingtalkDebug } from '../utils/index.ts';
 import { trackBackgroundWork } from "../utils/background-work.ts";
 import * as fs from 'fs';
 import * as path from 'path';
@@ -358,11 +358,13 @@ function extractQuotedMsgText(
               allowConversationRecent: false,
             }) || '';
           if (cardText) {
-            console.log(
-              `[DingTalk][Quote] interactiveCard 已从 CardCache 精确回填 | ids=${ids.join(',') || '-'} len=${cardText.length}`,
-            );
-          } else {
-            // 强制 dump 载荷，便于确认钉钉到底给了哪些字段
+            if (isDingtalkDebug()) {
+              console.log(
+                `[DingTalk][Quote] interactiveCard 已从 CardCache 精确回填 | ids=${ids.join(',') || '-'} len=${cardText.length}`,
+              );
+            }
+          } else if (isDingtalkDebug()) {
+            // 调试：dump 载荷确认钉钉给了哪些字段
             const dump = JSON.stringify(repliedMsg ?? {}).slice(0, 800);
             console.log(
               `[DingTalk][Quote] interactiveCard 无正文且缓存未命中（未使用会话最近兜底） | conv=${conversationId || '-'} keys=${Object.keys(contentObj || {}).join(',')} repliedMsg=${dump}`,
@@ -398,26 +400,32 @@ function extractQuotedMsgText(
           });
           if (cached) {
             bodyText = cached;
-            console.log(
-              `[DingTalk][Quote] msgType=${msgType} 已从 CardCache 精确回填 | ids=${ids.join(',') || '-'} len=${cached.length}`,
-            );
+            if (isDingtalkDebug()) {
+              console.log(
+                `[DingTalk][Quote] msgType=${msgType} 已从 CardCache 精确回填 | ids=${ids.join(',') || '-'} len=${cached.length}`,
+              );
+            }
           } else if (
             /card|interactive/i.test(String(msgType || "")) ||
             ids.length > 0
           ) {
             bodyText = "钉钉卡片消息。";
-            console.log(
-              `[DingTalk][Quote] 未知卡片类引用 msgType=${msgType} 已简化占位 | keys=${Object.keys(contentObj || {}).join(',')}`,
-            );
-          } else {
+            if (isDingtalkDebug()) {
+              console.log(
+                `[DingTalk][Quote] 未知卡片类引用 msgType=${msgType} 已简化占位 | keys=${Object.keys(contentObj || {}).join(',')}`,
+              );
+            }
+          } else if (isDingtalkDebug()) {
             console.log(
               `[DingTalk][Quote] 未知引用类型 msgType=${msgType} keys=${Object.keys(contentObj || {}).join(',')} dump=${JSON.stringify(repliedMsg ?? {}).slice(0, 600)}`,
             );
           }
         } catch {
-          console.log(
-            `[DingTalk][Quote] 未知引用类型 msgType=${msgType} keys=${Object.keys(contentObj || {}).join(',')}`,
-          );
+          if (isDingtalkDebug()) {
+            console.log(
+              `[DingTalk][Quote] 未知引用类型 msgType=${msgType} keys=${Object.keys(contentObj || {}).join(',')}`,
+            );
+          }
         }
       }
       break;

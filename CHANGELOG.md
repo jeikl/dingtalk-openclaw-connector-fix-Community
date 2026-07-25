@@ -5,53 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.29] - 2026-07-25
+
+### 主题
+
+正式版加固：默认日志更轻、排障只靠配置 `debug: true`；继承 0.8.28 连接/消息/错误卡能力。
+
+### 变更
+
+- 🧹 **默认静默诊断刷屏** — 无图文本回复不再输出 LocalImage / MediaIdTrace / CardCache / Quote 成功路径
+- 🔍 **debug 配置统一开关** — 顶层或账号 `"debug": true` 打开连接摘要、图片 mediaId、引用回填、队列计数等详细日志；**不再依赖环境变量**
+- 📚 **文档** — 安装命令精简为三条递进指导；README 中英同步至 0.8.29
+
+### 继承（0.8.28）
+
+- 基于官方 0.8.24 的长连接更稳、消息少丢、模型错误中文定稿、本仓库独有答案卡/图片能力
+
+### 安装
+
+**npx（一键扫码，按顺序试）：**
+
+```bash
+npx @jeik/dingtalk-connector install --force && openclaw gateway restart
+npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
+```
+
+**openclaw plugins install（只装插件，按顺序试）：**
+
+```bash
+openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
+openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
+```
+
 ## [0.8.28] - 2026-07-25
 
 ### 主题
 
-基于**官方最新 0.8.24**，并保留**本仓库独有**优化：把连接做稳、消息少丢、错误提示更清楚。少折腾、多好用。
+基于**官方最新 0.8.24**，并保留**本仓库独有**优化：连接更稳、消息少丢、错误提示更清楚。
 
-### 基于官方 0.8.24 吸收的能力
+### 本版重点
 
-- 更稳的长连接思路：连接建立后再挂心跳相关监听，减少「看起来连着、其实收不到消息」的假死重连
-- 机器人忙着回上一条时，处理过程中也会保持连接活跃，长回复不容易被中途掐断
-- 上游 SDK 刷屏日志过滤，控制台更干净，少误判成故障
-- 空回复时的友好提示（尤其是群聊配置不当的情况）
-
-> 说明：官方给其他插件用的「卡片创建/更新开放接口」本版**未合入**（对话体验不依赖它）。需要时可后续单独加。
-
-### 本版重点优化（效果向）
-
-**1. 长连接更稳**
-- 只有钉钉确认「这条连接可以收机器人消息」之后，才对外显示已连接
-- 连不上会自动多试几轮，而不是假装在线
-- 正常使用时尽量不乱拆连接，减少「连发好几条消息完全没反应」
-
-**2. 消息更少丢、反馈更快**
-- 消息进队成功后再向钉钉确认已收到，失败可让平台重发，避免「确认了却其实没处理」
-- 同一会话排队处理更可靠：任务进行中再发消息，更容易马上出现「已排队 / 处理中」提示和思考中表情
-- 单条任务卡住太久会自动放开队列，避免后面消息永远等不到
-
-**3. 模型出错时体验更好**
-- 上游欠费、无可用线路、503 等失败时，群聊/私聊都更容易定格成清晰中文错误卡片
-- 减少卡在「正在召唤大模型…」或莫名「思考完成」却看不到原因的情况
-- 错误结束后继续发消息，响应能力明显好于旧版
-
-**4. 本仓库独有优化（继续保留）**
-- 即时首响卡片、大段答案独立答案卡、图片/本地图修复、中文错误映射、强制群聊正常回复合流等
+- 长连接：能收消息才显示已连接；少假死误重连
+- 消息：进队后再 ACK；排队反馈更及时
+- 错误：503 / 欠费 / 无通道等中文定稿，少卡「正在召唤大模型」
+- 本仓库独有：答案卡、图片全路径、首响等
 
 ### 安装
 
 ```bash
-npx -y @jeik/dingtalk-connector@0.8.28 install --force
-openclaw gateway restart
-```
-
-或：
-
-```bash
-openclaw plugins install @jeik/dingtalk-connector@0.8.28 --force
-openclaw gateway restart
+openclaw plugins install @jeik/dingtalk-connector@0.8.28 --force && openclaw gateway restart
 ```
 
 ## [0.8.26] - 2026-07-25

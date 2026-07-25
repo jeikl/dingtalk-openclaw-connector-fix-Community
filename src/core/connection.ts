@@ -114,7 +114,7 @@ function printConnectionNoticeOnce(): void {
   _connectionNoticePrinted = true;
   console.log(
     "[dingtalk-connector] ℹ️  上游 dingtalk-stream 噪音已过滤；" +
-      "须 OPEN+REGISTERED 才报 ready，REGISTERED 超时会强制重连（禁止假 online）。" +
+      "OPEN 成功即可上线，REGISTERED 尽量等待；若环境不推 REGISTERED，首条消息会确认订阅。" +
       "正常运行不应出现 ≤30s 周期性硬重连。",
   );
 }
@@ -135,7 +135,9 @@ export async function monitorSingleAccount(
   const log = runtime?.log;
   
   // 创建 debug logger（仅在 debug 模式下输出 info/debug 日志）
-  const { createLoggerFromConfig } = await import('../utils/logger');
+  // 配置 debug: true 时同步打开图片/引用/队列详细诊断（无需环境变量）
+  const { createLoggerFromConfig, setDingtalkDebug } = await import('../utils/logger');
+  if (account.config?.debug) setDingtalkDebug(true);
   const logger = createLoggerFromConfig(account.config, `DingTalk:${accountId}`);
 
   // 验证凭据是否存在
@@ -288,15 +290,18 @@ export async function monitorSingleAccount(
   }
 
   /**
-   * 等待钉钉 Stream 真正可收消息。
+   * 等待钉钉 Stream 可服务。
    *
-   * dingtalk-stream 的 client.connect() 在创建 WebSocket 后立刻 resolve，
-   * **不等** socket open，更不等服务端 SYSTEM/REGISTERED。
+   * - OPEN：必须成功，否则 throw
+   * - REGISTERED：尽量等待；超时则 **降级 OPEN 上线**（不 throw）
    *
-   * 顺序：socket OPEN → SYSTEM topic=REGISTERED（client.registered=true）
-   * 任一步失败均 throw，禁止 OPEN-only 假 ready。
+   * 原因（生产日志）：部分环境 socket 已 OPEN 且 CALLBACK 能收消息，
+   * 但长期收不到 SYSTEM/REGISTERED 或 client.registered 不被置 true。
+   * 若硬性失败会触发网关 auto-restart 风暴，而旧连接/半连接其实仍在处理消息。
    */
-  async function waitForStreamReady(timeoutMs = STREAM_READY_TIMEOUT_MS): Promise<void> {
+  async function waitForStreamReady(timeoutMs = STREAM_READY_TIMEOUT_MS): Promise<{
+    registered: boolean;
+  }> {
     const started = Date.now();
 
     // 1) 等 WebSocket OPEN
@@ -332,12 +337,12 @@ export async function monitorSingleAccount(
       }
     }
 
-    // 2) 等服务端 REGISTERED（订阅生效，此后 CALLBACK 才会推到本连接）
+    // 2) 等服务端 REGISTERED（可选；超时降级）
     if ((client as any).registered === true) {
       logger.info(
         `✅ Stream 已就绪（OPEN + REGISTERED），耗时 ${Date.now() - started}ms`,
       );
-      return;
+      return { registered: true };
     }
 
     const registered = await new Promise<boolean>((resolve) => {
@@ -367,7 +372,7 @@ export async function monitorSingleAccount(
             return;
           }
         } catch {
-          // ignore parse errors
+          // ignore
         }
         if ((client as any).registered === true) {
           finish(true);
@@ -387,13 +392,15 @@ export async function monitorSingleAccount(
       logger.info(
         `✅ Stream 已就绪（OPEN + REGISTERED），耗时 ${Date.now() - started}ms`,
       );
-      return;
+      return { registered: true };
     }
 
-    // 禁止 OPEN-only 假 ready：未 REGISTERED 一律失败，由上层强制重连
-    throw new Error(
-      `SYSTEM/REGISTERED 超时（${timeoutMs}ms）：socket 已 OPEN 但订阅未生效，禁止报 connected`,
+    // 降级：OPEN 成功即可上线。许多环境不推 REGISTERED 或检测不到，但仍可收 CALLBACK。
+    logger.warn(
+      `⚠️ 未观察到 SYSTEM/REGISTERED（${timeoutMs}ms），socket 已 OPEN → 降级上线。` +
+        ` 收到首条机器人消息后会记为「订阅 empirically 生效」。`,
     );
+    return { registered: false };
   }
 
   /**
@@ -409,22 +416,20 @@ export async function monitorSingleAccount(
   }
 
   /**
-   * 单次：connect + 挂 listener + 等 OPEN/REGISTERED。
-   * 失败 throw，不报 connected。
+   * 单次：connect + 挂 listener + 等 OPEN（REGISTERED 可选）。
+   * 仅 OPEN 失败 throw；REGISTERED 超时则降级成功。
    */
-  async function connectAndWaitRegistered(): Promise<void> {
+  async function connectAndWaitReady(): Promise<{ registered: boolean }> {
     await client.connect();
     attachSocketLifecycleListeners();
-    await waitForStreamReady(STREAM_READY_TIMEOUT_MS);
-    if ((client as any).registered !== true) {
-      // 双保险：wait 已要求 registered，此处再断言
-      throw new Error("connect 后 client.registered 仍为 false");
-    }
+    return await waitForStreamReady(STREAM_READY_TIMEOUT_MS);
   }
 
   /**
-   * 直到 REGISTERED 成功或次数用尽。
-   * 用于初次启动与硬重连：绝不在未订阅时对外 connected=true。
+   * 建立可服务连接。
+   * - 优先拿到 REGISTERED
+   * - OPEN 成功即可上线（避免环境不推 REGISTERED 时 restart 风暴）
+   * - 仅在 OPEN 都失败时多轮重试
    */
   async function ensureRegisteredConnection(
     maxAttempts = REGISTERED_CONNECT_MAX_ATTEMPTS,
@@ -432,12 +437,12 @@ export async function monitorSingleAccount(
     let lastError: Error | undefined;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       if (isStopped) {
-        throw new Error("连接已停止，中止 REGISTERED 等待");
+        throw new Error("连接已停止，中止 Stream 建立");
       }
       try {
         if (attempt > 1) {
           logger.warn(
-            `🔄 REGISTERED 未就绪，强制重连 ${attempt}/${maxAttempts}…`,
+            `🔄 Stream 建立重试 ${attempt}/${maxAttempts}…`,
           );
           try {
             if ((client as any).socket) {
@@ -450,27 +455,28 @@ export async function monitorSingleAccount(
           await new Promise((r) => setTimeout(r, delay));
         } else {
           logger.info(
-            `⏳ 建立 Stream 并等待 REGISTERED（单次超时 ${STREAM_READY_TIMEOUT_MS}ms，最多 ${maxAttempts} 次）…`,
+            `⏳ 建立 Stream（OPEN 必须；REGISTERED 尽量等待 ${STREAM_READY_TIMEOUT_MS}ms）…`,
           );
         }
 
-        await connectAndWaitRegistered();
-        noteSocketAlive("registered-ok");
+        const ready = await connectAndWaitReady();
+        noteSocketAlive(ready.registered ? "registered-ok" : "open-degraded");
         connectionEstablishedTime = Date.now();
         logger.info(
-          `✅ 订阅已生效 registered=true（attempt ${attempt}/${maxAttempts}, ` +
+          `✅ Stream 可服务（attempt ${attempt}/${maxAttempts}, ` +
+            `registered=${ready.registered || Boolean((client as any).registered)}, ` +
             `socket=${(client as any).socket?.readyState}）`,
         );
         return;
       } catch (err: any) {
         lastError = err instanceof Error ? err : new Error(String(err));
         logger.warn(
-          `⚠️ Stream 就绪失败 attempt=${attempt}/${maxAttempts}: ${lastError.message}`,
+          `⚠️ Stream 建立失败 attempt=${attempt}/${maxAttempts}: ${lastError.message}`,
         );
       }
     }
     throw new Error(
-      `钉钉 Stream 在 ${maxAttempts} 次尝试后仍未 REGISTERED，拒绝假 connected。` +
+      `钉钉 Stream 在 ${maxAttempts} 次尝试后仍无法 OPEN。` +
         ` 最后错误: ${lastError?.message || "unknown"}`,
     );
   }
@@ -784,31 +790,27 @@ export async function monitorSingleAccount(
       lastMessageTime = Date.now();
       // 能收到 CALLBACK 说明链路活着——立刻刷新，打断「软超时→硬重连」误判
       noteSocketAlive("inbound-callback");
+      // 部分环境收不到 SYSTEM/REGISTERED，但 CALLBACK 已通：记为 empirically 订阅成功
+      if ((client as any).registered !== true) {
+        (client as any).registered = true;
+        logger.info(
+          `✅ 收到机器人 CALLBACK，视为订阅已生效（此前可能未观察到 SYSTEM/REGISTERED）`,
+        );
+      }
 
       // 收到消息时，向框架报告 lastInboundAt（用于 UI 显示 "Last inbound"）
       onStatusChange?.({ lastInboundAt: Date.now() });
 
       const messageId = res.headers?.messageId;
-      const timestamp = new Date().toISOString();
 
-      // ===== 第一步：记录原始消息接收 =====
-      logger.info(`\n========== 收到新消息 ==========`);
-      logger.info(`时间：${timestamp}`);
-      logger.info(`MessageId: ${messageId || "N/A"}`);
-      logger.info(`Headers: ${JSON.stringify(res.headers || {})}`);
-      logger.info(`Data 长度：${res.data?.length || 0} 字符`);
-
-      // ⚠️ 不要在解析/入队前 ACK。
-      // 旧逻辑「立刻 socketCallBackResponse」：若随后去重误杀、解析失败、或入队前进程重连，
-      // 钉钉认为已送达，不再重推 → 网关 UI 永远收不到。
-      // 正确：入队成功后再 ACK；失败则不 ACK，让钉钉 ~60s 内重投。
+      // 入队成功后再 ACK；失败不 ACK 以便钉钉重投
       let acked = false;
       const ackMessage = (why: string) => {
         if (acked || !messageId) return;
         try {
           (client as any).socketCallBackResponse(messageId, { success: true });
           acked = true;
-          logger.info(`✅ 已确认回调 messageId=${messageId} (${why})`);
+          logger.debug(`ACK messageId=${messageId} (${why})`);
         } catch (ackErr: any) {
           logger.warn(`确认回调失败: ${ackErr?.message || ackErr}`);
         }
@@ -817,79 +819,61 @@ export async function monitorSingleAccount(
       markMessageProcessingStart();
 
       try {
-        // 解析消息数据
         let data;
         try {
           data = JSON.parse(res.data);
         } catch (parseError: any) {
-          logger.error('Failed to parse response data as JSON:', {
-            error: parseError instanceof Error ? parseError.message : String(parseError),
-            rawData: typeof res.data === 'string' 
-              ? res.data.substring(0, 500)
-              : res.data,
-            dataType: typeof res.data,
-          });
-          // 解析失败：不 ACK，允许钉钉重投
-          throw new Error(
-            `Invalid JSON response from DingTalk API. ` +
-            `Error: ${parseError instanceof Error ? parseError.message : String(parseError)}. ` +
-            `Raw data (first 100 chars): ${String(res.data).substring(0, 100)}`
+          logger.error(
+            `JSON 解析失败: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
           );
-        }
-
-        // ===== 第二步：记录解析后的消息详情 =====
-        logger.info(`\n----- 消息详情 -----`);
-        logger.info(`消息类型：${data.msgtype || "unknown"}`);
-        logger.info(
-          `会话类型：${data.conversationType === "1" ? "DM (单聊)" : data.conversationType === "2" ? "Group (群聊)" : data.conversationType}`,
-        );
-        logger.info(
-          `发送者：${data.senderNick || "unknown"} (${data.senderStaffId || data.senderId || "unknown"})`,
-        );
-        logger.info(`会话 ID: ${data.conversationId || "N/A"}`);
-        logger.info(`消息 ID: ${data.msgId || "N/A"}`);
-        logger.info(
-          `SessionWebhook: ${data.sessionWebhook ? "已提供" : "未提供"}`,
-        );
-        logger.info(
-          `RobotCode: ${data.robotCode || account.config?.clientId || "N/A"}`,
-        );
-        if (data.chatbotUserId || data.chatbotCorpId) {
-          console.log(
-            `[DingTalk:${accountId}] [BotIdentity] accountId=${accountId} chatbotUserId=${data.chatbotUserId || "N/A"} chatbotCorpId=${data.chatbotCorpId || "N/A"}`,
+          throw new Error(
+            `Invalid JSON from DingTalk: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
           );
         }
 
         const businessMsgId = data.msgId;
+        const convType =
+          data.conversationType === "1"
+            ? "DM"
+            : data.conversationType === "2"
+              ? "Group"
+              : String(data.conversationType ?? "?");
+        const preview =
+          (data.text?.content || "").trim().slice(0, 80) ||
+          data.msgtype ||
+          "(no text)";
 
-        // 双层去重：协议 messageId + 业务 msgId（须在解析后一次完成）
+        // 一行摘要（debug 模式才打 Headers/全字段）
+        logger.info(
+          `📩 入站 ${convType} from=${data.senderNick || data.senderStaffId || data.senderId || "?"} ` +
+            `msg=${businessMsgId || messageId || "-"} preview=${JSON.stringify(preview)}`,
+        );
+        logger.debug(`Headers: ${JSON.stringify(res.headers || {})}`);
+        logger.debug(`字段: ${Object.keys(data).join(",")}`);
+
+        // BotIdentity 每个进程每个账号只打一次（配置多机器人时用）
+        if (data.chatbotUserId || data.chatbotCorpId) {
+          const key = `${accountId}:${data.chatbotUserId || ""}:${data.chatbotCorpId || ""}`;
+          if (!(globalThis as any).__dingtalkBotIdentityLogged) {
+            (globalThis as any).__dingtalkBotIdentityLogged = new Set<string>();
+          }
+          const seen = (globalThis as any).__dingtalkBotIdentityLogged as Set<string>;
+          if (!seen.has(key)) {
+            seen.add(key);
+            console.log(
+              `[DingTalk:${accountId}] [BotIdentity] chatbotUserId=${data.chatbotUserId || "N/A"} chatbotCorpId=${data.chatbotCorpId || "N/A"}`,
+            );
+          }
+        }
+
         if (checkAndMarkDingtalkMessage(accountId, messageId, businessMsgId)) {
           processedCount++;
-          // 重复投递：ACK 掉避免钉钉无限重推
           ackMessage("duplicate");
           logger.warn(
-            `⚠️ 检测到重复消息，跳过：protocol=${messageId || "-"} business=${businessMsgId || "-"} (${processedCount}/${receivedCount})`,
+            `⚠️ 重复消息已跳过 protocol=${messageId || "-"} business=${businessMsgId || "-"}`,
           );
-          logger.info(`========== 消息处理结束（重复） ==========\n`);
           return;
         }
-
-        let contentPreview = "N/A";
-        if (data.text?.content) {
-          contentPreview =
-            data.text.content.length > 100
-              ? data.text.content.substring(0, 100) + "..."
-              : data.text.content;
-        } else if (data.content) {
-          contentPreview =
-            JSON.stringify(data.content).substring(0, 100) + "...";
-        }
-        logger.info(`消息内容预览：${contentPreview}`);
-        logger.info(`完整数据字段：${Object.keys(data).join(", ")}`);
-        logger.info(`----- 消息详情结束 -----\n`);
-
-        // ===== 第三步：入队处理 =====
-        logger.info(`🚀 开始处理消息...`);
 
         await messageHandler({
           accountId,
@@ -901,29 +885,22 @@ export async function monitorSingleAccount(
           cfg: clawdbotConfig,
         });
 
-        // 入队/受理成功后再 ACK（handleDingTalkMessage 返回表示已进 session 队列）
         ackMessage("enqueued");
         noteSocketAlive("after-enqueue");
 
         processedCount++;
-        logger.info(`✅ 消息处理完成 (${processedCount}/${receivedCount})`);
-        logger.info(`========== 消息处理结束（成功） ==========\n`);
+        logger.info(`✅ 入队完成 (${processedCount}/${receivedCount})`);
       } catch (error: any) {
         processedCount++;
-        const errorMsg = `❌ 处理消息异常 (${processedCount}/${receivedCount}): ${error?.message || "未知错误"}`;
-        const errorStack = error?.stack || "无堆栈信息";
-        
-        logger.error(errorMsg);
-        logger.error(`错误堆栈:\n${errorStack}`);
-        
-        // 未成功入队：故意不 ACK，让钉钉重投（最多约 60s）
+        logger.error(
+          `❌ 入站处理失败 (${processedCount}/${receivedCount}): ${error?.message || "未知错误"}`,
+        );
+        if (error?.stack) logger.debug(error.stack);
         if (!acked) {
           logger.warn(
-            `⚠️ 未 ACK messageId=${messageId || "N/A"}，等待钉钉重投（避免网关永久丢消息）`,
+            `⚠️ 未 ACK messageId=${messageId || "N/A"}，等待钉钉重投`,
           );
         }
-        
-        logger.info(`========== 消息处理结束（失败） ==========\n`);
       } finally {
         markMessageProcessingEnd();
       }

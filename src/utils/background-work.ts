@@ -9,6 +9,8 @@
  * connection 层订阅计数变化，在 count>0 时保持处理中 keepAlive。
  */
 
+import { isDingtalkDebug } from "./logger.ts";
+
 type CountListener = (count: number) => void;
 
 let activeCount = 0;
@@ -54,7 +56,7 @@ export function trackBackgroundWork(
     notify();
   };
   void work.then(done, done);
-  if (label && typeof process !== "undefined" && process.env?.DINGTALK_DEBUG_QUEUE === "1") {
+  if (label && typeof process !== "undefined" && isDingtalkDebug()) {
     console.log(`[DingTalk][bgWork] +1 label=${label} count=${activeCount}`);
     void work.finally(() => {
       console.log(`[DingTalk][bgWork] -1 label=${label} count=${activeCount}`);

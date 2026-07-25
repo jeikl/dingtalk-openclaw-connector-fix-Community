@@ -26,7 +26,7 @@ const {
   logTypingFailure,
 } = channelRuntimeModule;
 
-import { createLoggerFromConfig } from "./utils/logger.ts";
+import { createLoggerFromConfig, isDingtalkDebug } from "./utils/logger.ts";
 import { CHANNEL_ID } from "./channel.ts";
 import { resolveDingtalkAccount } from "./config/accounts.ts";
 import { getDingtalkRuntime } from "./runtime.ts";
@@ -877,30 +877,26 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         ? { type: 'user', userId: senderId }
         : { type: 'group', openConversationId: conversationId };
       
-      // 始终输出（不依赖 debug），便于排查本地图灰图
-      console.log(
-        `[DingTalk][LocalImage] closeStreaming 开始媒体处理 | target=${JSON.stringify(target)} hasToken=${!!oapiToken} textLen=${finalText.length}`,
-      );
-      // 预览正文中是否含 ![](
+      // 无图路径默认静默；有 MD 图或处理后变化才记一行（灰图风险仍 warn）
       const mdImgCount = (finalText.match(/!\[[^\]]*\]\([^)]+\)/g) || []).length;
-      console.log(
-        `[DingTalk][LocalImage] closeStreaming 正文 markdown 图数量=${mdImgCount} preview=${JSON.stringify(finalText.slice(0, 200))}`,
-      );
-      
+      if (mdImgCount > 0 || isDingtalkDebug()) {
+        log.info(
+          `[DingTalk][LocalImage] closeStreaming 媒体处理 | target=${JSON.stringify(target)} hasToken=${!!oapiToken} textLen=${finalText.length} mdImgs=${mdImgCount}`,
+        );
+      }
+
       if (oapiToken) {
-        // 处理本地图片（含 /mnt 共享盘；失败会 /tmp 重试，避免留下本地路径灰图）
         const beforeImg = finalText;
         finalText = await processLocalImages(finalText, oapiToken, log);
         if (beforeImg !== finalText) {
-          console.log(
-            `[DingTalk][LocalImage] closeStreaming 图片处理 | ${beforeImg.length}→${finalText.length}`,
+          log.info(
+            `[DingTalk][LocalImage] closeStreaming 图片已处理 | ${beforeImg.length}→${finalText.length}`,
           );
         }
-        // 仅统计代码块外的本地 ![]——示例 JSON/参数说明里的路径不算灰图风险
         try {
           const { hasResidualLocalMdImagesOutsideCode } = await import("./services/media.ts");
           if (hasResidualLocalMdImagesOutsideCode(finalText)) {
-            console.warn(
+            log.warn(
               `[DingTalk][LocalImage] closeStreaming 定稿后仍有代码块外的本地 MD 图未上传，钉钉可能灰图`,
             );
           }
@@ -938,7 +934,6 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         );
         
         // ✅ 处理裸露的本地文件路径（绕过 OpenClaw SDK 的 bug）
-        log.info(`[DingTalk][closeStreaming] 准备调用 processRawMediaPaths`);
         const { processRawMediaPaths } = await import('./services/media');
         finalText = await processRawMediaPaths(
           finalText,
@@ -1246,13 +1241,12 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         // 模型主动 NO_REPLY（无错误）保持静默——不在此伪造错误文案，避免群聊刷屏。
         // 此时 earlyCard 仍会由 onIdle→closeStreaming 收尾（思考完成 / 无文本），不会永久转圈。
         if (!raw && !isErr) {
-          log.info(
-            `[DingTalk][onSkip] kind=${info?.kind} reason=${info?.reason} 非错误静默（NO_REPLY/empty），跳过错误捕获`,
-          );
+          // 模型主动 NO_REPLY：静默，不打日志
           return;
         }
+        // 失败类静默：保留一行关键 warn（避免与 closeStreaming 重复刷堆栈）
         log.warn(
-          `[DingTalk][onSkip] kind=${info?.kind} reason=${info?.reason} isError=${isErr} rawLen=${raw.length}（群聊静默失败常见）`,
+          `[DingTalk][onSkip] 群聊静默失败 kind=${info?.kind} reason=${info?.reason} rawLen=${raw.length}`,
         );
         captureErrorFromPayload(payload, `onSkip:${info?.kind ?? "?"}:${info?.reason ?? "?"}`);
       },

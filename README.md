@@ -4,7 +4,7 @@
   <p>基于官方最新 <strong>v0.8.24</strong> 的社区增强版：吸收官方长连接改进，并重点优化消息接收、排队反馈与模型错误展示。<br/>
   保留社区在图片、答案卡、首响体验上的增强，持续修官方暂未覆盖的实际使用问题。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.28</strong>（推荐生产；一键安装：`npx -y @jeik/dingtalk-connector@0.8.28 install --force`）</p>
+  <p><strong>当前正式版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.29</strong></p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,45 +23,31 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.28 · 2026-07-25（当前正式版）
+### 🚀 v0.8.29 · 2026-07-25（当前正式版）
 
-**主题：基于官方 0.8.24 · 长连接更稳 · 消息少丢 · 错误提示更清楚**
+**主题：正式加固 · 日志更干净 · 排障只开 debug**
 
-本版在**本仓库独有**能力之上，对齐官方 **0.8.24** 的连接改进，并重点打磨「发了消息却没反应」「错误卡卡住」「排队提示不出现」等真实使用体验。
-
-#### 基于官方 0.8.24 吸收了什么
-
-- 更稳妥的长连接建立与保活方式，减少假死、误重连
-- 机器人处理长任务时连接不易被中途掐断
-- 控制台少刷无用日志，排障更清爽
-
-#### 本仓库额外优化（你会感受到的效果）
+在 **0.8.28**（连接更稳 / 消息少丢 / 错误卡可定稿）基础上再打磨：
 
 | 体验 | 效果 |
 |------|------|
-| 🔗 **连接更靠谱** | 只有真正能收消息时才显示「已连接」；连不上会自动多试几轮，而不是假装在线 |
-| 📩 **消息更少丢** | 明显缓解：连发多条、错误回复后、任务刚结束时「发了没进网关」的情况 |
-| ⏳ **排队反馈更及时** | 上一条还在处理时再发，更容易马上看到「已排队 / 处理中」和思考中表情 |
-| ⚠️ **模型故障更好懂** | 欠费、无可用线路、503 等失败时，卡片更容易定格成中文说明，少卡在「正在召唤大模型」 |
-| 🃏 **答案卡 / 图片等** | **本仓库独有**优化继续保留：大段答案独立卡片、图片全路径修复等 |
+| 🧹 **默认日志更轻** | 无图正常回复不再刷 LocalImage / MediaIdTrace / CardCache |
+| 🔍 **排障更简单** | 配置 `"debug": true` 即输出连接、图片、引用、队列详细日志（无需环境变量） |
+| 🔗 **连接 / 队列** | 继承 0.8.28：能收消息才算在线；连发、错误后再发更稳；排队反馈更及时 |
+| ⚠️ **模型故障** | 503 / 欠费 / 无通道等更容易定格中文错误，少卡「正在召唤大模型」 |
+| 🃏 **本仓库独有** | 答案卡、图片全路径、首响体验等继续保留 |
 
 ```bash
-npx -y @jeik/dingtalk-connector@0.8.28 install --force && openclaw gateway restart
+npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
 
-### 📦 v0.8.26 · 2026-07-25
+### 📦 v0.8.28 · 2026-07-25
 
-目标 ID 填写约束（保留 `==` 等后缀与大小写）。
+基于官方 0.8.24 的长连接与消息体验加固（当前能力已并入 0.8.29）。
 
-### 📦 v0.8.25 · 2026-07-24
+### 📦 v0.8.26 / 0.8.25 及更早
 
-发送人岗位与身份信息；裸钉钉 ID 推导为单聊。
-
-### 📦 v0.8.21-fix49 及更早
-
-答案卡、图片全路径修复、流式定稿、中文错误映射等——详见 [CHANGELOG.md](CHANGELOG.md)。
-
-完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md)
+目标 ID 约束、发送人身份、答案卡、图片修复等——详见 [CHANGELOG.md](CHANGELOG.md)。
 
 ---
 
@@ -197,8 +183,22 @@ npx -y @jeik/dingtalk-connector@0.8.28 install --force && openclaw gateway resta
 | `answerCardTemplateId` | string | `d246b7f5-1783-4e9b-bb46-bef52d63050e.schema` | 答案静态卡模板 |
 | `messageAnswerCard` | boolean | **true** | message 工具正文走答案静态卡；`false`=普通消息 |
 | `messageImageMd` | boolean | **false** | message 图文：`false` 文图分开；`true` 可合并 markdown |
+| `debug` | boolean | **false** | 详细诊断日志（连接/图片 mediaId/引用回填/队列）。**日常关闭**；排障时顶层或某账号设 `true`，改完 `openclaw gateway restart` |
 
 > `answerCard` = 对话流式收尾；`messageAnswerCard` = message 工具外发。
+
+**临时开排障日志示例：**
+
+```json
+"channels": {
+  "dingtalk-connector": {
+    "enabled": true,
+    "clientId": "…",
+    "clientSecret": "…",
+    "debug": true
+  }
+}
+```
 
 ---
 
@@ -236,79 +236,62 @@ npx -y @jeik/dingtalk-connector@0.8.28 install --force && openclaw gateway resta
 
 | 项目 | 说明 |
 |------|------|
-| 基础版本 | 官方 v0.8.20，功能完全一致 |
-| 修复内容 | 官方一直不修的 Bug（见上方最近修复） |
+| 基础版本 | 对齐官方 **v0.8.24** 长连接能力，并叠加本仓库独有优化 |
+| 修复内容 | 连接假死、消息丢失、错误卡卡住、图片灰图等实际使用问题 |
 | 维护方式 | 社区维护，持续跟进官方更新 |
 
 ---
 
 ## 安装与要求
 
-开始之前，请确保：
-
-- **OpenClaw**：已安装并正常运行。详情请访问 [OpenClaw 官网](https://openclaw.ai/)
-- **版本要求**：OpenClaw ≥ **2026.4.9**，通过 `openclaw -v` 查看
-
-> 如低于此版本，执行 `npm install -g openclaw` 升级。
-
----
-
-## 安装
-
-> 与官方插件同 channel id（`dingtalk-connector`），`--force` 直接覆盖更新，**无需先卸载**官方版或旧版。  
-> **当前稳定版：`0.8.21-fix31`**（npm `latest` 已指向本版）。安装/更新后**必须** `openclaw gateway restart`。
-
-### 方式一：npm（推荐）
+- **OpenClaw** 已安装并正常运行（[官网](https://openclaw.ai/)）
+- **版本**：OpenClaw ≥ **2026.4.9**（`openclaw -v`）
+- 与官方插件同 channel id（`dingtalk-connector`），`--force` 可直接覆盖，**无需先卸载**
+- 安装/更新后**必须** `openclaw gateway restart`
 
 包名：[`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
-**1）一键扫码安装**（推荐：创建机器人 → 取凭证 → 装插件 → 写配置）：
+### A）npx 一键扫码安装（按顺序试）
 
 ```bash
-npx -y @jeik/dingtalk-connector install
+# 1）装最新
+npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
-# 已有 dingtalk-connector / 装不上时强制覆盖
-npx -y @jeik/dingtalk-connector install --force
+# 2）若装到的不是最新，指定版本号
+npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
+
+# 3）若仍装不了，强制走 npm 官方源
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
 ```
 
-**2）只装插件**（凭证已配好，或走手动配置文档）：
+### B）只装插件（凭证已配好时，按顺序试）
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector --force
-openclaw gateway restart
+# 1）装最新
+openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
+
+# 2）若装到的不是最新，指定版本号
+openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
+
+# 3）若仍装不了，强制走 npm 官方源
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
 ```
 
-**3）升级到最新版：**
-
-```bash
-openclaw plugins install @jeik/dingtalk-connector --force
-openclaw gateway restart
-```
-
-### 方式二：本地 tgz / 源码构建（开发、离线、预发验证）
+### 本地 tgz / 源码（开发、离线）
 
 ```bash
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
-# 可选：钉到某次发布（这是 git tag，不是分支；clone 后可直接 checkout）
-# git fetch --tags && git checkout v0.8.21-fix31
-
 npm install && npm run build && npm pack
-# → jeik-dingtalk-connector-0.8.21-fix31.tgz
-
-openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force
-openclaw gateway restart
+openclaw plugins install ./jeik-dingtalk-connector-0.8.29.tgz --force && openclaw gateway restart
 ```
-
-> 国内若 clone 慢，可用镜像前缀，例如：  
-> `git clone https://ghfast.top/https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git`
 
 ### 安装后自检
 
 ```bash
-openclaw -v                    # OpenClaw ≥ 2026.4.9
+openclaw -v                    # ≥ 2026.4.9
 openclaw plugins list          # 应看到 dingtalk-connector / @jeik/dingtalk-connector
-# 发一条钉钉消息：应先出现「🦸 正在召唤大模型…」，再进入流式回复
+# 发一条钉钉消息：应先「正在召唤大模型…」，再流式/答案卡
 ```
 
 ---

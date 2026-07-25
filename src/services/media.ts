@@ -12,6 +12,7 @@ import FormData from 'form-data';
 import type { DingtalkConfig } from '../types/index.ts';
 import { DINGTALK_OAPI, getOapiAccessToken } from '../utils/index.ts';
 import { dingtalkHttp, dingtalkOapiHttp } from '../utils/http-client.ts';
+import { isDingtalkDebug } from '../utils/logger.ts';
 
 
 /** 文本文件扩展名 */
@@ -109,9 +110,11 @@ export function stripNonImageOccurrencesOfTargets(
           from = idx + variant.length;
           continue;
         }
-        console.log(
-          `[DingTalk][MediaIdTrace] strip 非图重复 target | idx=${idx} remove=${variant.slice(0, 100)}`,
-        );
+        if (isDingtalkDebug()) {
+          console.log(
+            `[DingTalk][MediaIdTrace] strip 非图重复 target | idx=${idx} remove=${variant.slice(0, 100)}`,
+          );
+        }
         if (!stripped.includes(original)) stripped.push(original);
         out = out.slice(0, idx) + out.slice(idx + variant.length);
         // 清掉残留的空「下载链接：」类前缀行由调用方整理；此处只去 target
@@ -127,7 +130,7 @@ export function stripNonImageOccurrencesOfTargets(
     .replace(/[：:]\s*$/gm, "")
     .trim();
 
-  if (stripped.length) {
+  if (stripped.length && isDingtalkDebug()) {
     console.log(
       `[DingTalk][MediaIdTrace] strip 完成 | stripped=${stripped.length} bodyLen=${out.length}`,
     );
@@ -225,15 +228,27 @@ export interface UploadResult {
 }
 
 /**
- * 本地图诊断：默认 console.log 一行（不走 log.warn，避免 [sendTextToDingTalk] 双前缀）。
- * verbose=true 的细节（realpath 等）仅在 debug 时输出。
- * 决策路径（匹配/exists/上传成败/残留）务必 always-on，方便查灰图。
+ * 本地图诊断日志。
+ * 默认静默：无图/空扫描不再刷屏。仅在上传/失败/灰图风险，或 debug: true 时输出。
  */
 function logLocalImage(log: any, step: string, detail?: string, verbose = false) {
   const line = detail
     ? `[DingTalk][LocalImage] ${step} | ${detail}`
     : `[DingTalk][LocalImage] ${step}`;
   if (verbose) {
+    try {
+      log?.debug?.(line);
+    } catch {
+      // ignore
+    }
+    return;
+  }
+  const interesting =
+    isDingtalkDebug() ||
+    /失败|灰图|残留|上传成功|上传失败|下载成功|下载失败|重试|remote|Remote/i.test(
+      `${step} ${detail || ""}`,
+    );
+  if (!interesting) {
     try {
       log?.debug?.(line);
     } catch {
@@ -282,11 +297,12 @@ export function logMediaIdTrace(
   // sampleImageMsg 的 photoURL 就是裸 mediaId，不算异常
   const isImageMsg = /type=image|sampleImage|photoURL/i.test(`${stage} ${extra || ""}`);
   const suspiciousBare = isImageMsg ? [] : bareIds;
+  // 默认静默：仅 force、灰图风险（裸 mediaId / 残留本地路径）、或 debug: true
   const always =
     force ||
+    isDingtalkDebug() ||
     suspiciousBare.length > 0 ||
-    residualLocal.length > 0 ||
-    /API前|完成|:out|:in|after-process|processImages/i.test(stage);
+    residualLocal.length > 0;
   if (!always) return;
 
   const preview = text.replace(/\n/g, "\\n").slice(0, 200);
@@ -556,9 +572,11 @@ async function downloadRemoteUrlToTemp(url: string): Promise<string | null> {
       `dingtalk-md-remote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`,
     );
     fs.writeFileSync(tmp, buf);
-    console.log(
-      `[DingTalk][MediaIdTrace] 远程图下载成功 | bytes=${buf.length} tmp=${tmp}`,
-    );
+    if (isDingtalkDebug()) {
+      console.log(
+        `[DingTalk][MediaIdTrace] 远程图下载成功 | bytes=${buf.length} tmp=${tmp}`,
+      );
+    }
     return tmp;
   } catch (e: any) {
     console.warn(`[DingTalk][MediaIdTrace] 远程图下载异常 | ${e?.message || e}`);
@@ -599,8 +617,8 @@ function replaceOutsideImageTargets(
  * - 本地：正文重复的本地路径换成 down.dingtalk.com 可点链接（仍同一条消息）
  * - **不再拆第二条 text 消息**
  *
- * 日志约定（always-on，查灰图必看）：
- * - 开始 / 扫描每张 ![] / 本地 exists / 上传成败 / 远程下载 / 残留 / out
+ * 日志约定（默认静默；配置 debug: true 全量）：
+ * - 有图上传/失败/灰图残留才 console；无图路径不刷屏
  */
 export async function processImagesForOutbound(
   content: string,
@@ -613,16 +631,19 @@ export async function processImagesForOutbound(
     `contentLen=${content?.length ?? 0} hasToken=${!!oapiToken}`,
   );
   if (!oapiToken) {
-    logLocalImage(log, "processImagesForOutbound 跳过", "无 oapiToken（本地路径无法上传→必灰图）");
-    logMediaIdTrace("processImagesForOutbound:skip-no-token", content, undefined, true);
+    // 有 MD 图却无 token 才告警（否则无图路径全静默）
+    if (/!\[[^\]]*\]\([^)]+\)/.test(content || "")) {
+      logLocalImage(log, "processImagesForOutbound 跳过", "无 oapiToken（本地路径无法上传→必灰图）");
+      logMediaIdTrace("processImagesForOutbound:skip-no-token", content);
+    }
     return { text: content || "", followUpUrls: [] };
   }
   if (!content || typeof content !== "string") {
-    logLocalImage(log, "processImagesForOutbound 跳过", "content 为空");
+    logLocalImage(log, "processImagesForOutbound 跳过", "content 为空", true);
     return { text: content || "", followUpUrls: [] };
   }
 
-  logMediaIdTrace("processImagesForOutbound:in", content, undefined, true);
+  logMediaIdTrace("processImagesForOutbound:in", content);
 
   const codeRanges = getMarkdownCodeRanges(content);
   if (codeRanges.length > 0) {
@@ -795,14 +816,26 @@ export async function processImagesForOutbound(
     })
     .map((m) => (m[2] || "").trim());
 
-  logLocalImage(
-    log,
-    "processImagesForOutbound 完成",
-    `uploads=${uploadCount} localTried=${localTried} remoteTried=${remoteTried} skippedCode=${skippedCode} skippedOther=${skippedOther} outLen=${result.length}` +
-      (residual.length
-        ? ` ⚠️residualLocal=${residual.length}:${residual.slice(0, 3).join("|")}`
-        : " residualLocal=0"),
-  );
+  // 有实际上传/跳过/残留时记一行；纯文本无图完成则静默
+  if (uploadCount > 0 || localTried > 0 || remoteTried > 0 || residual.length > 0) {
+    logLocalImage(
+      log,
+      residual.length
+        ? "processImagesForOutbound 完成(有残留)"
+        : "processImagesForOutbound 上传成功",
+      `uploads=${uploadCount} localTried=${localTried} remoteTried=${remoteTried} skippedCode=${skippedCode} skippedOther=${skippedOther} outLen=${result.length}` +
+        (residual.length
+          ? ` ⚠️residualLocal=${residual.length}:${residual.slice(0, 3).join("|")}`
+          : " residualLocal=0"),
+    );
+  } else {
+    logLocalImage(
+      log,
+      "processImagesForOutbound 完成",
+      `uploads=0 outLen=${result.length}`,
+      true,
+    );
+  }
   if (residual.length) {
     logLocalImage(
       log,
@@ -810,7 +843,7 @@ export async function processImagesForOutbound(
       residual.join(" | "),
     );
   }
-  logMediaIdTrace("processImagesForOutbound:out", result, undefined, true);
+  logMediaIdTrace("processImagesForOutbound:out", result);
 
   return { text: result, followUpUrls: [] };
 }

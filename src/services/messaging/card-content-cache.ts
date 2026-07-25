@@ -12,6 +12,8 @@
  * 内存 LRU + TTL，进程重启后清空（可接受）。
  */
 
+import { isDingtalkDebug } from "../../utils/logger.ts";
+
 export type CardContentCacheEntry = {
   text: string;
   at: number;
@@ -83,12 +85,15 @@ export function rememberCardContent(params: {
     byKey.set(normalizeKey("convRef", `${cid}|${ref}`), entry);
   }
 
-  try {
-    console.log(
-      `[DingTalk][CardCache] 已缓存 | outTrack=${params.outTrackId || "-"} conv=${params.conversationId || "-"} len=${text.length}`,
-    );
-  } catch {
-    // ignore
+  // 成功写入默认静默；需要排查时设 debug: true
+  if (isDingtalkDebug()) {
+    try {
+      console.log(
+        `[DingTalk][CardCache] 已缓存 | outTrack=${params.outTrackId || "-"} conv=${params.conversationId || "-"} len=${text.length}`,
+      );
+    } catch {
+      // ignore
+    }
   }
 }
 

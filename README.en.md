@@ -4,7 +4,7 @@
   <p>Community-enhanced fork based on official <strong>v0.8.24</strong>: adopts official long-connection improvements, plus stronger message delivery, queue feedback, and error-card UX.<br/>
   Keeps <strong>this repo’s unique</strong> extras (images, answer cards, first-response UX) and continues to fix issues not yet covered upstream.</p>
 
-  <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.28</strong> (recommended for production; install: <code>npx -y @jeik/dingtalk-connector@0.8.28 install --force</code>).</p>
+  <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.29</strong></p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,45 +23,31 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.28 · 2026-07-25 (current)
+### 🚀 v0.8.29 · 2026-07-25 (current)
 
-**Theme: based on official 0.8.24 · steadier connection · fewer lost messages · clearer errors**
+**Theme: production hardening · quieter logs · debug config only**
 
-Built on **this repo’s unique** enhancements, aligned with official **0.8.24** connection work, and focused on real UX: “sent but no reply”, stuck error cards, and missing “queued” feedback.
-
-#### From official 0.8.24
-
-- More reliable long-connection setup and keepalive (fewer “connected but silent” cases)
-- Long AI runs less likely to get cut mid-task by connection flapping
-- Cleaner console logs for easier ops
-
-#### Extra improvements in this repo (what you’ll notice)
+Built on **0.8.28** (steadier connection / fewer lost messages / clearer error cards):
 
 | Experience | Effect |
 |------------|--------|
-| 🔗 **Connection** | Marks “connected” only when the bot can actually receive messages; auto-retries instead of faking online |
-| 📩 **Fewer lost messages** | Much better after errors, after a reply finishes, or when sending several messages quickly |
-| ⏳ **Queue feedback** | While the previous message is still running, new messages more reliably show “queued / processing” + thinking reaction |
-| ⚠️ **Model failures** | Billing / no channel / 503-style failures settle into clear Chinese error cards instead of spinning forever |
-| 🃏 **Answer cards & images** | **Unique to this repo** — large-answer cards, full image-path fixes, etc. remain |
+| 🧹 **Quieter by default** | No LocalImage / MediaIdTrace / CardCache spam on normal text replies |
+| 🔍 **Simple debug** | Set `"debug": true` for connection, image, quote, and queue diagnostics (no env vars) |
+| 🔗 **Connection / queue** | Connected only when messages can be received; better multi-send and post-error recovery |
+| ⚠️ **Model failures** | 503 / billing / no-channel settle to clear Chinese cards instead of spinning forever |
+| 🃏 **This repo’s unique extras** | Answer cards, full image paths, first-response UX remain |
 
 ```bash
-npx -y @jeik/dingtalk-connector@0.8.28 install --force && openclaw gateway restart
+npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 ```
 
-### 📦 v0.8.26 · 2026-07-25
+### 📦 v0.8.28 · 2026-07-25
 
-Stricter outbound target ID rules (keep `==` suffixes and case).
+Official 0.8.24-aligned connection & delivery hardening (included in 0.8.29).
 
-### 📦 v0.8.25 · 2026-07-24
+### 📦 v0.8.26 / 0.8.25 and earlier
 
-Sender role/title identity; bare DingTalk IDs as direct chat.
-
-### 📦 v0.8.21-fix49 and earlier
-
-Answer cards, image path fixes, streaming finalize, Chinese error mapping — see [CHANGELOG.md](CHANGELOG.md).
-
-Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md)
+Target ID rules, sender identity, answer cards, image fixes — see [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -232,68 +218,54 @@ Community contributions (features & bug fixes) are always welcome — submit a P
 
 | Item | Description |
 |------|-------------|
-| Base | Official v0.8.20, fully identical features |
-| Fixes | Bugs the official team hasn't addressed (see recent fixes above) |
+| Base | Aligned with official **v0.8.24** long-connection work + this repo’s unique extras |
+| Fixes | Silent connection, lost messages, stuck error cards, grey images, etc. |
 | Maintenance | Community maintained, continuously tracking official updates |
 
 ---
 
 ## Requirements & Installation
 
-Before you start, make sure you have:
-
-- **OpenClaw**: Installed and running properly. Visit the [OpenClaw website](https://openclaw.ai/) for details.
-- **Version**: OpenClaw ≥ **2026.4.9**. Check with `openclaw -v`.
-
-> If below this version, upgrade with: `npm install -g openclaw`
-
----
-
-## Installation
-
-> Same channel id as the official plugin (`dingtalk-connector`); `--force` overwrites in place — **no uninstall** needed.  
-> **Current stable: `0.8.21-fix31`** (npm `latest`). Always run `openclaw gateway restart` after install/upgrade.
-
-### Option 1: npm (recommended)
+- **OpenClaw** installed and running ([website](https://openclaw.ai/))
+- **Version**: OpenClaw ≥ **2026.4.9** (`openclaw -v`)
+- Same channel id as official (`dingtalk-connector`); `--force` overwrites — **no uninstall** needed
+- Always `openclaw gateway restart` after install/upgrade
 
 Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
-**1) One-command QR install** (bot → credentials → plugin → config):
+### A) npx one-command QR install (try in order)
 
 ```bash
-npx -y @jeik/dingtalk-connector install
+# 1) Install latest
+npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
-# force overwrite when a local dingtalk-connector already exists
-npx -y @jeik/dingtalk-connector install --force
+# 2) If you did not get the latest, pin the version
+npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
+
+# 3) If it still fails, force the official npm registry
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.29 install --force && openclaw gateway restart
 ```
 
-**2) Plugin only** (credentials already set / manual setup):
+### B) Plugin only (credentials already set; try in order)
 
 ```bash
-openclaw plugins install @jeik/dingtalk-connector --force
-openclaw gateway restart
+# 1) Install latest
+openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
+
+# 2) If you did not get the latest, pin the version
+openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
+
+# 3) If it still fails, force the official npm registry
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.29 --force && openclaw gateway restart
 ```
 
-**3) Upgrade to latest:**
-
-```bash
-openclaw plugins install @jeik/dingtalk-connector --force
-openclaw gateway restart
-```
-
-### Option 2: Local tgz / from source (dev / offline)
+### Local tgz / from source (dev / offline)
 
 ```bash
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
-# optional: pin a release (this is a git tag, not a branch)
-# git fetch --tags && git checkout v0.8.21-fix31
-
 npm install && npm run build && npm pack
-# → jeik-dingtalk-connector-0.8.21-fix31.tgz
-
-openclaw plugins install ./jeik-dingtalk-connector-0.8.21-fix31.tgz --force
-openclaw gateway restart
+openclaw plugins install ./jeik-dingtalk-connector-0.8.29.tgz --force && openclaw gateway restart
 ```
 
 ### Smoke check
@@ -301,8 +273,12 @@ openclaw gateway restart
 ```bash
 openclaw -v
 openclaw plugins list
-# Send a DingTalk message — you should first see "🦸 正在召唤大模型…" then streaming reply
+# Send a DingTalk message — first “summoning model…”, then streaming / answer card
 ```
+
+### Debug logs
+
+Set `"debug": true` under `channels.dingtalk-connector` (or a specific account), then restart the gateway. No environment variables required.
 
 ---
 

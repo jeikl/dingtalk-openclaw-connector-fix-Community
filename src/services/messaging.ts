@@ -7,7 +7,7 @@ import type { DingtalkConfig } from "../types/index.ts";
 import { DINGTALK_API, getAccessToken, getOapiAccessToken } from "../utils/index.ts";
 import { dingtalkHttp, dingtalkOapiHttp } from "../utils/http-client.ts";
 import { MEDIA_MSG_TYPES } from "../utils/constants.ts";
-import { createLoggerFromConfig } from "../utils/logger.ts";
+import { createLoggerFromConfig, isDingtalkDebug } from "../utils/logger.ts";
 import {
   processLocalImages,
   processImagesForOutbound,
@@ -779,7 +779,9 @@ async function downloadRemoteMediaToTemp(
 ): Promise<string | null> {
   const tag = "[DingTalk][RemoteMedia]";
   try {
-    console.log(`${tag} 开始下载 | ${url}`);
+    if (isDingtalkDebug()) {
+      console.log(`${tag} 开始下载 | ${url}`);
+    }
     const res = await fetch(url, {
       redirect: "follow",
       signal: AbortSignal.timeout(60_000),
@@ -819,7 +821,9 @@ async function downloadRemoteMediaToTemp(
       `dingtalk-remote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`,
     );
     writeFileSync(tmp, buf);
-    console.log(`${tag} 下载成功 | bytes=${buf.length} ct=${ct || "-"} tmp=${tmp}`);
+    if (isDingtalkDebug()) {
+      console.log(`${tag} 下载成功 | bytes=${buf.length} ct=${ct || "-"} tmp=${tmp}`);
+    }
     return tmp;
   } catch (err: any) {
     console.warn(`${tag} 下载异常 | ${err?.message || err}`);
@@ -883,26 +887,27 @@ export async function sendTextToDingTalk(params: {
 
   const targetParam = resolveOutboundTarget(target);
 
-  console.log(
-    `[DingTalk][LocalImage] sendTextToDingTalk 入口 | target=${target} textLen=${text?.length ?? 0}`,
-  );
-  logMediaIdTrace("sendTextToDingTalk:in", text, `target=${target}`, true);
-
   // 图片：![] 上传为 mediaId；下载链接原 URL 留在同一条 markdown（不拆消息）
+  // 无图路径全程静默；有 MD 图/失败才打日志（debug: true 可开全量）
   const beforeLen = text?.length ?? 0;
+  const hasMdImg = /!\[[^\]]*\]\([^)]+\)/.test(text || "");
+  if (hasMdImg || isDingtalkDebug()) {
+    logMediaIdTrace("sendTextToDingTalk:in", text, `target=${target}`);
+  }
   try {
     const oapiToken = await getOapiAccessToken(config);
-    console.log(
-      `[DingTalk][LocalImage] sendTextToDingTalk 入口 | target=${target} textLen=${beforeLen} hasToken=${!!oapiToken}`,
-    );
     if (oapiToken && text) {
       const processed = await processImagesForOutbound(text, oapiToken, log);
       text = processed.text;
-      console.log(
-        `[DingTalk][LocalImage] sendTextToDingTalk 处理后 | ${beforeLen}→${text.length} 字`,
-      );
-      logMediaIdTrace("sendTextToDingTalk:after-process", text, undefined, true);
-    } else if (!oapiToken) {
+      if (beforeLen !== text.length && (hasMdImg || isDingtalkDebug())) {
+        console.log(
+          `[DingTalk][LocalImage] sendTextToDingTalk 处理后 | ${beforeLen}→${text.length} 字`,
+        );
+      }
+      if (hasMdImg || isDingtalkDebug()) {
+        logMediaIdTrace("sendTextToDingTalk:after-process", text);
+      }
+    } else if (!oapiToken && hasMdImg) {
       console.warn(
         `[DingTalk][LocalImage] sendTextToDingTalk 无 oapiToken，跳过图片上传（本地 MD 图会灰）`,
       );
@@ -915,15 +920,13 @@ export async function sendTextToDingTalk(params: {
 
   const msgType: DingTalkMsgType = shouldSendAsMarkdown(text) ? "markdown" : "text";
   const cardOpts = messageToolProactiveCardOptions(config);
-  logMediaIdTrace(
-    "sendTextToDingTalk:API前",
-    text,
-    `msgType=${msgType} messageAnswerCard=${isMessageAnswerCardEnabled(config)} useAICard=${cardOpts.useAICard}`,
-    true,
-  );
-  console.log(
-    `[DingTalk][MessageCard] sendTextToDingTalk | messageAnswerCard=${isMessageAnswerCardEnabled(config)} useAICard=${cardOpts.useAICard} tpl=${cardOpts.cardTemplateId || "-"}`,
-  );
+  if (hasMdImg || isDingtalkDebug()) {
+    logMediaIdTrace(
+      "sendTextToDingTalk:API前",
+      text,
+      `msgType=${msgType} messageAnswerCard=${isMessageAnswerCardEnabled(config)} useAICard=${cardOpts.useAICard}`,
+    );
+  }
 
   return sendProactive(config, targetParam, text, {
     msgType,
@@ -1127,9 +1130,11 @@ export async function sendMediaToDingTalk(params: {
         const mergeMd =
           config.messageImageMd === true && caption.length > 0 && imgsInCaption >= 1;
 
-        console.log(
-          `[DingTalk][LocalImage] sendMedia 图片策略 | messageImageMd=${config.messageImageMd === true} imgsInCaption=${imgsInCaption} mergeMd=${mergeMd} remote=${isRemoteHttpUrl(mediaUrl)}`,
-        );
+        if (isDingtalkDebug()) {
+          console.log(
+            `[DingTalk][LocalImage] sendMedia 图片策略 | messageImageMd=${config.messageImageMd === true} imgsInCaption=${imgsInCaption} mergeMd=${mergeMd} remote=${isRemoteHttpUrl(mediaUrl)}`,
+          );
+        }
 
         if (mergeMd) {
           const combined = `${caption}\n\n![](${mediaId})`;
@@ -1250,7 +1255,9 @@ export async function sendMediaToDingTalk(params: {
       if (cleanupTemp) {
         try {
           _fs.unlinkSync(cleanupTemp);
-          console.log(`[DingTalk][RemoteMedia] 已清理临时文件 | ${cleanupTemp}`);
+          if (isDingtalkDebug()) {
+            console.log(`[DingTalk][RemoteMedia] 已清理临时文件 | ${cleanupTemp}`);
+          }
         } catch {
           // ignore
         }
@@ -1392,9 +1399,11 @@ async function sendProactiveInternal(
           undefined,
           skipInputingWalk,
         );
-        console.log(
-          `[DingTalk][MessageCard] AI Card 发送成功 | outTrack=${card.cardInstanceId} tpl=${cardTemplateId || "default"} skipInputing=${skipInputingWalk}`,
-        );
+        if (isDingtalkDebug()) {
+          console.log(
+            `[DingTalk][MessageCard] AI Card 发送成功 | outTrack=${card.cardInstanceId} tpl=${cardTemplateId || "default"} skipInputing=${skipInputingWalk}`,
+          );
+        }
         return {
           ok: true,
           cardInstanceId: card.cardInstanceId,
@@ -1455,12 +1464,17 @@ async function sendProactiveInternal(
       return { ok: false, error: payload.error, usedAICard: false };
     }
 
-    logMediaIdTrace(
-      "API出站",
-      content,
-      `msgKey=${payload.msgKey} type=${msgType}`,
-      true,
-    );
+    // 仅有 MD 图或调试时追踪（纯文本出站不再刷屏）
+    if (
+      /!\[[^\]]*\]\([^)]+\)/.test(content || "") ||
+      isDingtalkDebug()
+    ) {
+      logMediaIdTrace(
+        "API出站",
+        content,
+        `msgKey=${payload.msgKey} type=${msgType}`,
+      );
+    }
 
     const body: any = {
       robotCode: String(config.clientId),

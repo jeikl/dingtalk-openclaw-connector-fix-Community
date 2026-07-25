@@ -1,7 +1,23 @@
 /**
  * 日志工具模块
- * 根据 debug 配置控制日志输出
+ * 根据配置里的 debug 控制日志输出（无需环境变量）
  */
+
+/** 任一账号/连接开启过 debug 后为 true；默认静默 */
+let pluginDebugEnabled = false;
+
+/**
+ * 设置插件全局 debug（由配置 `debug: true` 驱动）
+ * 仅在 true 时打开；避免多账号中未开 debug 的账号把开关关掉。
+ */
+export function setDingtalkDebug(enabled: boolean): void {
+  if (enabled) pluginDebugEnabled = true;
+}
+
+/** 是否输出图片/引用/队列等详细诊断日志 */
+export function isDingtalkDebug(): boolean {
+  return pluginDebugEnabled;
+}
 
 /**
  * 创建日志记录器
@@ -10,6 +26,8 @@
  * @returns 日志记录器对象
  */
 export function createLogger(debug: boolean = false, prefix: string = '') {
+  if (debug) setDingtalkDebug(true);
+
   const logger = {
     /**
      * 打印 info 级别日志
@@ -73,6 +91,9 @@ export function createLogger(debug: boolean = false, prefix: string = '') {
  * @param prefix - 日志前缀
  * @returns 日志记录器对象
  */
-export function createLoggerFromConfig(config: { debug?: boolean } | undefined | null, prefix: string = '') {
+export function createLoggerFromConfig(
+  config: { debug?: boolean } | undefined | null,
+  prefix: string = '',
+) {
   return createLogger(!!config?.debug, prefix);
 }

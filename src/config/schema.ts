@@ -81,7 +81,8 @@ const DingtalkSharedConfigShape = {
   asyncMode: z.boolean().optional(),
   ackText: z.string().optional(),
   endpoint: z.string().optional(), // DWClient gateway endpoint
-  debug: z.boolean().optional(), // DWClient debug mode
+  /** 调试日志：连接/入站摘要、图片 mediaId 追踪、引用回填、队列计数等（默认关，生产勿开） */
+  debug: z.boolean().optional(),
   enableMediaUpload: z.boolean().optional(),
   systemPrompt: z.string().optional(),
   /**
