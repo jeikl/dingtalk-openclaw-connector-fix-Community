@@ -3,12 +3,14 @@
  *
  * 职责：
  * - 管理单个钉钉账号的 WebSocket 连接
- * - 实现应用层心跳检测（10 秒间隔，90 秒超时）
+ * - 实现应用层心跳检测（10 秒间隔，20 秒无 pong 超时）
  * - 处理连接重连逻辑，带指数退避
  * - 消息去重（内置 Map，5 分钟 TTL）
  *
  * 核心特性：
  * - 关闭 SDK 内置 keepAlive，使用自定义心跳
+ * - connect 后等 OPEN + SYSTEM/REGISTERED 再报 ready（防首条消息丢失）
+ * - 重连后先挂 pong/message/close listener 再等就绪（防幽灵重连）
  * - 详细的消息接收日志（三阶段：接收、解析、处理）
  * - 连接统计和监控（每分钟输出）
  */
@@ -18,6 +20,10 @@ import type { ResolvedDingtalkAccount } from "../types/index.ts";
 import {
   checkAndMarkDingtalkMessage,
 } from "../utils/utils-legacy.ts";
+import {
+  getActiveBackgroundWorkCount,
+  onBackgroundWorkCountChange,
+} from "../utils/background-work.ts";
 
 // ============ 类型定义 ============
 
@@ -57,12 +63,61 @@ export type MonitorDingtalkAccountOpts = {
 
 /** 心跳间隔（毫秒） */
 const HEARTBEAT_INTERVAL = 10 * 1000; // 10 秒
-/** 超时阈值（毫秒） */
-const TIMEOUT_THRESHOLD = 20 * 1000; // 20 秒（2 次心跳未响应）
+/**
+ * 无 pong 软超时：仅计「连续未确认」次数，不立刻 disconnect。
+ * 过去这里直接 doReconnect()，会在 socket 仍 OPEN 时拆掉活连接，
+ * 造成数秒空窗 → 用户连发 3~7 条消息钉钉推不到本进程（网关 UI 完全收不到）。
+ */
+const SOFT_STALE_MS = 20 * 1000;
+/** 连续软超时次数达到该值，且 socket 非 OPEN 或 ping 失败，才硬重连 */
+const HARD_RECONNECT_AFTER_MISSES = 3;
+/** 两次硬重连之间的最小间隔（除非 socket 已死） */
+const MIN_RECONNECT_GAP_MS = 30 * 1000;
+/**
+ * 消息处理期间刷新 lastSocketAvailableTime 的间隔。
+ * 必须明显小于 SOFT_STALE_MS。
+ */
+const MESSAGE_PROCESSING_KEEPALIVE_MS = 15 * 1000; // 15 秒
 /** 基础退避时间（毫秒） */
 const BASE_BACKOFF_DELAY = 1000; // 1 秒
 /** 最大退避时间（毫秒） */
 const MAX_BACKOFF_DELAY = 30 * 1000; // 30 秒
+/** 单次等待 OPEN + REGISTERED 的超时 */
+const STREAM_READY_TIMEOUT_MS = 15_000;
+/**
+ * REGISTERED 未就绪时最多完整重连次数（含首次）。
+ * 超时禁止 OPEN-only 假 ready，避免「显示已连接但收不到 CALLBACK」。
+ */
+const REGISTERED_CONNECT_MAX_ATTEMPTS = 5;
+
+// ============ 上游 SDK 噪音抑制（借鉴官方 #571/#536/#573）============
+// dingtalk-stream 在 connect/disconnect 时直接 console.info 两条固定串，
+// 绕过插件 logger，频繁重连时会刷屏造成「故障」误判。只过滤这两条精确匹配。
+let _streamNoiseSilenced = false;
+function silenceDingtalkStreamConsoleNoise(): void {
+  if (_streamNoiseSilenced) return;
+  _streamNoiseSilenced = true;
+  const origConsoleInfo = console.info.bind(console);
+  console.info = (...args: any[]) => {
+    const first = args[0];
+    if (typeof first === "string") {
+      if (first === "Disconnecting.") return;
+      if (/^\[[^\]]+\] connect success$/.test(first)) return;
+    }
+    return origConsoleInfo(...args);
+  };
+}
+
+let _connectionNoticePrinted = false;
+function printConnectionNoticeOnce(): void {
+  if (_connectionNoticePrinted) return;
+  _connectionNoticePrinted = true;
+  console.log(
+    "[dingtalk-connector] ℹ️  上游 dingtalk-stream 噪音已过滤；" +
+      "须 OPEN+REGISTERED 才报 ready，REGISTERED 超时会强制重连（禁止假 online）。" +
+      "正常运行不应出现 ≤30s 周期性硬重连。",
+  );
+}
 
 // ============ 监控账号 ============
 
@@ -71,6 +126,9 @@ export async function monitorSingleAccount(
 ): Promise<void> {
   const { cfg, account, runtime, abortSignal, messageHandler, onStatusChange } = opts;
   const { accountId } = account;
+
+  // 在动态 import dingtalk-stream 之前抑制其 console.info 噪音
+  silenceDingtalkStreamConsoleNoise();
 
   // 保存 cfg 以便传递给 messageHandler
   const clawdbotConfig = cfg;
@@ -158,52 +216,67 @@ export async function monitorSingleAccount(
   let reconnectAttempts = 0;
   let keepAliveTimer: NodeJS.Timeout | null = null;
   let isStopped = false;
+  /** 连续 keepAlive 周期内未收到 pong / 未刷新的次数 */
+  let consecutiveStaleMisses = 0;
+  let lastHardReconnectAt = 0;
   
   // ============ 消息处理活跃标记 ============
-  // 用于在消息处理期间防止心跳超时触发重连
+  // 覆盖「WS 回调短暂入队」+「sessionQueues 后台 AI 全长」（见 background-work.ts）
+  // 仅覆盖 WS 回调会导致：入队后立刻 End → 503/长任务期间幽灵重连 → 后续消息无反应
+  let wsCallbackActive = false;
   let activeMessageProcessing = false;
   let messageProcessingKeepAliveTimer: NodeJS.Timeout | null = null;
-  
-  /**
-   * 标记消息处理开始，启动定期更新机制
-   * 在消息处理期间，每 30 秒更新一次 lastSocketAvailableTime
-   * 防止长时间处理（如复杂的 AI 任务）触发心跳超时
-   */
-  function markMessageProcessingStart() {
-    activeMessageProcessing = true;
-    lastSocketAvailableTime = Date.now();
-    
-    // 清理旧的定时器（如果存在）
-    if (messageProcessingKeepAliveTimer) {
-      clearInterval(messageProcessingKeepAliveTimer);
-    }
-    
-    // 每 30 秒更新一次，确保不会触发 90 秒超时
+  let unsubscribeBackgroundWork: (() => void) | null = null;
+
+  function ensureProcessingKeepAliveTimer(): void {
+    if (messageProcessingKeepAliveTimer) return;
     messageProcessingKeepAliveTimer = setInterval(() => {
       if (activeMessageProcessing) {
         lastSocketAvailableTime = Date.now();
-        logger.debug(`📝 消息处理中，更新 socket 可用时间`);
+        logger.debug(
+          `📝 消息处理中，更新 socket 可用时间 (ws=${wsCallbackActive} bg=${getActiveBackgroundWorkCount()})`,
+        );
       }
-    }, 30 * 1000); // 30 秒间隔
-    
-    logger.debug(`📝 消息处理开始，启动活跃标记定时器`);
+    }, MESSAGE_PROCESSING_KEEPALIVE_MS);
   }
-  
-  /**
-   * 标记消息处理结束，停止定期更新机制
-   */
-  function markMessageProcessingEnd() {
-    activeMessageProcessing = false;
-    
+
+  function clearProcessingKeepAliveTimer(): void {
     if (messageProcessingKeepAliveTimer) {
       clearInterval(messageProcessingKeepAliveTimer);
       messageProcessingKeepAliveTimer = null;
     }
-    
-    // 最后更新一次时间
-    lastSocketAvailableTime = Date.now();
-    logger.debug(`✅ 消息处理结束，清理活跃标记定时器`);
   }
+
+  /** 根据 WS 入队中 / 后台任务数 合成 activeMessageProcessing */
+  function refreshProcessingActive(reason: string): void {
+    const bg = getActiveBackgroundWorkCount();
+    const next = wsCallbackActive || bg > 0;
+    activeMessageProcessing = next;
+    lastSocketAvailableTime = Date.now();
+    if (next) {
+      ensureProcessingKeepAliveTimer();
+      logger.debug(
+        `📝 处理活跃 reason=${reason} ws=${wsCallbackActive} bg=${bg}`,
+      );
+    } else {
+      clearProcessingKeepAliveTimer();
+      logger.debug(`✅ 处理空闲 reason=${reason}`);
+    }
+  }
+
+  function markMessageProcessingStart() {
+    wsCallbackActive = true;
+    refreshProcessingActive("ws-start");
+  }
+
+  function markMessageProcessingEnd() {
+    wsCallbackActive = false;
+    refreshProcessingActive("ws-end");
+  }
+
+  unsubscribeBackgroundWork = onBackgroundWorkCountChange(() => {
+    refreshProcessingActive("bg-count");
+  });
 
   // ============ 辅助函数 ============
 
@@ -212,6 +285,194 @@ export async function monitorSingleAccount(
     const exponentialDelay = BASE_BACKOFF_DELAY * Math.pow(2, attempt);
     const jitter = Math.random() * 1000; // 0-1 秒随机抖动
     return Math.min(exponentialDelay + jitter, MAX_BACKOFF_DELAY);
+  }
+
+  /**
+   * 等待钉钉 Stream 真正可收消息。
+   *
+   * dingtalk-stream 的 client.connect() 在创建 WebSocket 后立刻 resolve，
+   * **不等** socket open，更不等服务端 SYSTEM/REGISTERED。
+   *
+   * 顺序：socket OPEN → SYSTEM topic=REGISTERED（client.registered=true）
+   * 任一步失败均 throw，禁止 OPEN-only 假 ready。
+   */
+  async function waitForStreamReady(timeoutMs = STREAM_READY_TIMEOUT_MS): Promise<void> {
+    const started = Date.now();
+
+    // 1) 等 WebSocket OPEN
+    if ((client as any).socket?.readyState !== 1) {
+      const opened = await new Promise<boolean>((resolve) => {
+        const socket = (client as any).socket;
+        if (!socket) {
+          resolve(false);
+          return;
+        }
+        if (socket.readyState === 1) {
+          resolve(true);
+          return;
+        }
+        const remain = Math.max(1_000, timeoutMs - (Date.now() - started));
+        let settled = false;
+        const finish = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          socket.removeListener?.("open", onOpen);
+          socket.removeListener?.("error", onError);
+          resolve(ok);
+        };
+        const timer = setTimeout(() => finish(false), remain);
+        const onOpen = () => finish(true);
+        const onError = () => finish(false);
+        socket.once("open", onOpen);
+        socket.once("error", onError);
+      });
+      if (!opened) {
+        throw new Error(`WebSocket OPEN 超时（${timeoutMs}ms）`);
+      }
+    }
+
+    // 2) 等服务端 REGISTERED（订阅生效，此后 CALLBACK 才会推到本连接）
+    if ((client as any).registered === true) {
+      logger.info(
+        `✅ Stream 已就绪（OPEN + REGISTERED），耗时 ${Date.now() - started}ms`,
+      );
+      return;
+    }
+
+    const registered = await new Promise<boolean>((resolve) => {
+      const socket = (client as any).socket;
+      if (!socket) {
+        resolve(false);
+        return;
+      }
+      const remain = Math.max(1_000, timeoutMs - (Date.now() - started));
+      let settled = false;
+      const finish = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearInterval(poll);
+        socket.removeListener?.("message", onMessage);
+        resolve(ok);
+      };
+      const timer = setTimeout(() => finish(false), remain);
+
+      const onMessage = (data: any) => {
+        try {
+          const raw = typeof data === "string" ? data : data?.toString?.() ?? String(data);
+          const msg = JSON.parse(raw);
+          if (msg?.type === "SYSTEM" && msg?.headers?.topic === "REGISTERED") {
+            finish(true);
+            return;
+          }
+        } catch {
+          // ignore parse errors
+        }
+        if ((client as any).registered === true) {
+          finish(true);
+        }
+      };
+
+      const poll = setInterval(() => {
+        if ((client as any).registered === true) {
+          finish(true);
+        }
+      }, 100);
+
+      socket.on("message", onMessage);
+    });
+
+    if (registered || (client as any).registered === true) {
+      logger.info(
+        `✅ Stream 已就绪（OPEN + REGISTERED），耗时 ${Date.now() - started}ms`,
+      );
+      return;
+    }
+
+    // 禁止 OPEN-only 假 ready：未 REGISTERED 一律失败，由上层强制重连
+    throw new Error(
+      `SYSTEM/REGISTERED 超时（${timeoutMs}ms）：socket 已 OPEN 但订阅未生效，禁止报 connected`,
+    );
+  }
+
+  /**
+   * connect 之后、wait ready 之前挂上 pong/message/close。
+   * 官方 #566：若在 connect 前 setup，socket 为 undefined，listener 静默 no-op →
+   * pong 无人接 → lastSocketAvailableTime 不刷新 → TIMEOUT 幽灵重连。
+   * 必须在 wait OPEN 之前挂好，否则等待窗内的 pong 也会丢。
+   */
+  function attachSocketLifecycleListeners(): void {
+    setupPongListener();
+    setupMessageListener();
+    setupCloseListener();
+  }
+
+  /**
+   * 单次：connect + 挂 listener + 等 OPEN/REGISTERED。
+   * 失败 throw，不报 connected。
+   */
+  async function connectAndWaitRegistered(): Promise<void> {
+    await client.connect();
+    attachSocketLifecycleListeners();
+    await waitForStreamReady(STREAM_READY_TIMEOUT_MS);
+    if ((client as any).registered !== true) {
+      // 双保险：wait 已要求 registered，此处再断言
+      throw new Error("connect 后 client.registered 仍为 false");
+    }
+  }
+
+  /**
+   * 直到 REGISTERED 成功或次数用尽。
+   * 用于初次启动与硬重连：绝不在未订阅时对外 connected=true。
+   */
+  async function ensureRegisteredConnection(
+    maxAttempts = REGISTERED_CONNECT_MAX_ATTEMPTS,
+  ): Promise<void> {
+    let lastError: Error | undefined;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      if (isStopped) {
+        throw new Error("连接已停止，中止 REGISTERED 等待");
+      }
+      try {
+        if (attempt > 1) {
+          logger.warn(
+            `🔄 REGISTERED 未就绪，强制重连 ${attempt}/${maxAttempts}…`,
+          );
+          try {
+            if ((client as any).socket) {
+              await client.disconnect();
+            }
+          } catch (discErr: any) {
+            logger.debug(`断开旧连接: ${discErr?.message || discErr}`);
+          }
+          const delay = Math.min(1000 * attempt, 5_000);
+          await new Promise((r) => setTimeout(r, delay));
+        } else {
+          logger.info(
+            `⏳ 建立 Stream 并等待 REGISTERED（单次超时 ${STREAM_READY_TIMEOUT_MS}ms，最多 ${maxAttempts} 次）…`,
+          );
+        }
+
+        await connectAndWaitRegistered();
+        noteSocketAlive("registered-ok");
+        connectionEstablishedTime = Date.now();
+        logger.info(
+          `✅ 订阅已生效 registered=true（attempt ${attempt}/${maxAttempts}, ` +
+            `socket=${(client as any).socket?.readyState}）`,
+        );
+        return;
+      } catch (err: any) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        logger.warn(
+          `⚠️ Stream 就绪失败 attempt=${attempt}/${maxAttempts}: ${lastError.message}`,
+        );
+      }
+    }
+    throw new Error(
+      `钉钉 Stream 在 ${maxAttempts} 次尝试后仍未 REGISTERED，拒绝假 connected。` +
+        ` 最后错误: ${lastError?.message || "unknown"}`,
+    );
   }
 
   /** 统一重连函数，带指数退避（无限重连） */
@@ -233,68 +494,31 @@ export async function monitorSingleAccount(
     }
 
     try {
-      // 1. 先断开旧连接（检查 WebSocket 状态）
+      // 1. 先断开旧连接
       if ((client as any).socket?.readyState === 1 || (client as any).socket?.readyState === 3) {
         await client.disconnect();
         logger.info(`已断开旧连接`);
       }
 
-      // 2. 重新建立连接
-      await client.connect();
+      // 2. 重连直到 REGISTERED（内部含 connect + listener + wait，失败会多轮）
+      await ensureRegisteredConnection(REGISTERED_CONNECT_MAX_ATTEMPTS);
 
-      // 3. 等待连接真正建立（监听 open 事件，最多等待 10 秒）
-      const connectionEstablished = await new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => {
-          resolve(false);
-        }, 10_000); // 10 秒超时
+      // 3. 重置计时与状态
+      noteSocketAlive("reconnect-ok");
+      connectionEstablishedTime = Date.now();
+      reconnectAttempts = 0;
+      lastHardReconnectAt = Date.now();
 
-        // 如果已经是 OPEN 状态，直接返回
-        if ((client as any).socket?.readyState === 1) {
-          clearTimeout(timeout);
-          resolve(true);
-          return;
-        }
-
-        // 否则监听 open 事件
-        const onOpen = () => {
-          clearTimeout(timeout);
-          (client as any).socket?.removeListener('open', onOpen);
-          (client as any).socket?.removeListener('error', onError);
-          resolve(true);
-        };
-
-        const onError = (err: any) => {
-          clearTimeout(timeout);
-          (client as any).socket?.removeListener('open', onOpen);
-          (client as any).socket?.removeListener('error', onError);
-          logger.warn(`连接建立失败: ${err.message}`);
-          resolve(false);
-        };
-
-        (client as any).socket?.once('open', onOpen);
-        (client as any).socket?.once('error', onError);
-      });
-
-      if (!connectionEstablished) {
-        throw new Error(`连接建立超时或失败`);
-      }
-
-      // 4. 重置 socket 可用时间、连接建立时间和重连计数
-      lastSocketAvailableTime = Date.now();
-      connectionEstablishedTime = Date.now(); // 重置连接建立时间
-      reconnectAttempts = 0; // 重连成功，重置计数
-
-      // 重连成功，向框架报告 connected: true
+      // 4. 真正可收 CALLBACK 后再报 connected
       onStatusChange?.({ connected: true, lastConnectedAt: Date.now() });
 
-      // 重新注册 socket 事件监听器（新 socket 需要新的 listener）
-      setupPongListener();
-      setupMessageListener();
-      setupCloseListener();
-
-      logger.info(`✅ 重连成功 (socket 状态=${(client as any).socket?.readyState})`);
+      logger.info(
+        `✅ 重连成功 (socket=${(client as any).socket?.readyState}, registered=${Boolean((client as any).registered)})`,
+      );
     } catch (err: any) {
       reconnectAttempts++;
+      // 未 REGISTERED：保持 connected=false，避免 UI 假在线
+      onStatusChange?.({ connected: false });
       logger.error(
         `重连失败：${err.message} (尝试 ${reconnectAttempts})`,
       );
@@ -308,8 +532,15 @@ export async function monitorSingleAccount(
   function setupPongListener() {
     (client as any).socket?.on("pong", () => {
       lastSocketAvailableTime = Date.now();
+      consecutiveStaleMisses = 0;
       logger.debug(`收到 PONG 响应`);
     });
+  }
+
+  function noteSocketAlive(reason: string): void {
+    lastSocketAvailableTime = Date.now();
+    consecutiveStaleMisses = 0;
+    logger.debug(`socket alive reason=${reason}`);
   }
 
   /** 监听 WebSocket message 事件，收到 disconnect 消息时立即触发重连 */
@@ -355,12 +586,54 @@ export async function monitorSingleAccount(
   }
 
   /**
-   * 启动 keepAlive 机制（单定时器 + 指数退避）
-   *
-   * 业界最佳实践：
-   * - 单定时器：每 10 秒检查一次，同时完成心跳和超时检测
-   * - 使用 WebSocket 原生 Ping
-   * - 指数退避重连：避免雪崩效应
+   * 请求硬重连（拆 socket）。
+   * - socket 仍 OPEN：先补 PING，连续 misses 未达阈值则绝不拆连接（防空窗吞消息）
+   * - socket 已死：立即重连
+   * - 冷却：非死连接时距上次硬重连 < MIN_RECONNECT_GAP_MS 则跳过
+   */
+  async function requestHardReconnect(reason: string, socketDead = false): Promise<void> {
+    if (isReconnecting || isStopped) return;
+
+    const socketState = (client as any).socket?.readyState;
+
+    // 活连接：优先补 ping，未达连续 miss 阈值不拆
+    if (!socketDead && socketState === 1) {
+      try {
+        (client as any).socket?.ping();
+        logger.warn(
+          `⚠️ 软超时但 socket 仍 OPEN (reason=${reason}, misses=${consecutiveStaleMisses}/${HARD_RECONNECT_AFTER_MISSES})，仅补 PING`,
+        );
+      } catch (err: any) {
+        logger.warn(`补 PING 失败: ${err.message}`);
+        consecutiveStaleMisses += 1;
+      }
+      if (consecutiveStaleMisses < HARD_RECONNECT_AFTER_MISSES) {
+        return;
+      }
+    }
+
+    // 冷却（socket 已死时跳过冷却）
+    if (!socketDead) {
+      const gap = Date.now() - lastHardReconnectAt;
+      if (lastHardReconnectAt > 0 && gap < MIN_RECONNECT_GAP_MS) {
+        logger.warn(
+          `⚠️ 跳过硬重连：距上次仅 ${Math.round(gap / 1000)}s < ${MIN_RECONNECT_GAP_MS / 1000}s 冷却 (reason=${reason})`,
+        );
+        return;
+      }
+    }
+
+    lastHardReconnectAt = Date.now();
+    consecutiveStaleMisses = 0;
+    logger.info(`🔄 硬重连 reason=${reason} socket=${socketState}`);
+    await doReconnect(socketDead);
+  }
+
+  /**
+   * 启动 keepAlive：
+   * - 10s 发 ping；pong 刷新 lastSocketAvailableTime
+   * - 软超时只计数 + 补 ping，达到 HARD_RECONNECT_AFTER_MISSES 且 socket 异常才拆连接
+   * - 处理中任务期间绝不硬重连
    */
   function startKeepAlive(): () => void {
     logger.debug(
@@ -375,24 +648,16 @@ export async function monitorSingleAccount(
 
       try {
         const elapsed = Date.now() - lastSocketAvailableTime;
-
-        // 【超时检测】超过 90 秒未确认 socket 可用，触发重连
-        if (elapsed > TIMEOUT_THRESHOLD) {
-          logger.info(
-            `⚠️ 超时检测：已 ${Math.round(elapsed / 1000)} 秒未确认 socket 可用，触发重连...`,
-          );
-          await doReconnect();
-          return;
-        }
-
-        // 【心跳检测】检查 socket 状态
         const socketState = (client as any).socket?.readyState;
         const timeSinceConnection = Date.now() - connectionEstablishedTime;
+
         logger.debug(
-          `心跳检测：socket 状态=${socketState}, elapsed=${Math.round(elapsed / 1000)}s, 连接已建立=${Math.round(timeSinceConnection / 1000)}s`,
+          `心跳检测：socket=${socketState}, elapsed=${Math.round(elapsed / 1000)}s, ` +
+            `misses=${consecutiveStaleMisses}, processing=${activeMessageProcessing}, ` +
+            `connectedFor=${Math.round(timeSinceConnection / 1000)}s`,
         );
 
-        // 给新建立的连接 15 秒宽限期，避免在连接建立初期就触发重连
+        // socket 非 OPEN：宽限期后硬重连
         if (socketState !== 1) {
           if (timeSinceConnection < 15_000) {
             logger.debug(
@@ -400,31 +665,55 @@ export async function monitorSingleAccount(
             );
             return;
           }
-          
-          logger.info(
-            `⚠️ 心跳检测：socket 状态=${socketState}，触发重连...`,
-          );
-          await doReconnect(true); // 立即重连，不退避
+          if (activeMessageProcessing) {
+            logger.warn(
+              `⚠️ socket 非 OPEN 但消息处理中，暂缓硬重连 state=${socketState}`,
+            );
+            return;
+          }
+          await requestHardReconnect(`socket-dead state=${socketState}`, true);
           return;
         }
 
-        // 【发送原生 Ping】仅发送，不刷新时间戳；
-        // 只有收到 pong 响应时才更新 lastSocketAvailableTime（见 setupPongListener）
+        // 软超时：无 pong/刷新超过 SOFT_STALE_MS
+        if (elapsed > SOFT_STALE_MS) {
+          consecutiveStaleMisses += 1;
+          if (activeMessageProcessing) {
+            noteSocketAlive("processing-hold");
+            logger.warn(
+              `⚠️ 软超时但处理中，刷新活跃时间不重连 (elapsed=${Math.round(elapsed / 1000)}s)`,
+            );
+            return;
+          }
+          logger.warn(
+            `⚠️ 软超时 misses=${consecutiveStaleMisses}/${HARD_RECONNECT_AFTER_MISSES} ` +
+              `elapsed=${Math.round(elapsed / 1000)}s socket=OPEN`,
+          );
+          // OPEN 时优先补 ping；达到次数再考虑硬重连
+          await requestHardReconnect("stale-pong", false);
+          return;
+        }
+
+        consecutiveStaleMisses = 0;
+
+        // 正常心跳 ping（pong 到了才刷新时间戳）
         try {
           (client as any).socket?.ping();
           logger.debug(`💓 发送 PING 心跳成功`);
         } catch (err: any) {
           logger.warn(`发送 PING 失败：${err.message}`);
-          // 发送失败也计入超时
+          consecutiveStaleMisses += 1;
+          if (consecutiveStaleMisses >= HARD_RECONNECT_AFTER_MISSES) {
+            await requestHardReconnect("ping-failed", true);
+          }
         }
       } catch (err: any) {
         logger.error(`keepAlive 检测失败：${err.message}`);
       }
-    }, HEARTBEAT_INTERVAL); // 每 10 秒检测一次
+    }, HEARTBEAT_INTERVAL);
 
     logger.debug(`✅ keepAlive 定时器已启动`);
 
-    // 返回清理函数
     return () => {
       if (keepAliveTimer) clearInterval(keepAliveTimer);
       keepAliveTimer = null;
@@ -441,10 +730,11 @@ export async function monitorSingleAccount(
     keepAliveTimer = null;
 
     // 清理消息处理活跃标记定时器
-    if (messageProcessingKeepAliveTimer) {
-      clearInterval(messageProcessingKeepAliveTimer);
-      messageProcessingKeepAliveTimer = null;
-    }
+    clearProcessingKeepAliveTimer();
+    wsCallbackActive = false;
+    activeMessageProcessing = false;
+    unsubscribeBackgroundWork?.();
+    unsubscribeBackgroundWork = null;
 
     // 清理事件监听器
     if ((client as any).socket) {
@@ -492,6 +782,8 @@ export async function monitorSingleAccount(
     client.registerCallbackListener(TOPIC_ROBOT, async (res: any) => {
       receivedCount++;
       lastMessageTime = Date.now();
+      // 能收到 CALLBACK 说明链路活着——立刻刷新，打断「软超时→硬重连」误判
+      noteSocketAlive("inbound-callback");
 
       // 收到消息时，向框架报告 lastInboundAt（用于 UI 显示 "Last inbound"）
       onStatusChange?.({ lastInboundAt: Date.now() });
@@ -506,28 +798,24 @@ export async function monitorSingleAccount(
       logger.info(`Headers: ${JSON.stringify(res.headers || {})}`);
       logger.info(`Data 长度：${res.data?.length || 0} 字符`);
 
-      // 立即确认回调
-      if (messageId) {
-        (client as any).socketCallBackResponse(messageId, { success: true });
-        logger.info(`✅ 已立即确认回调：messageId=${messageId}`);
-      } else {
-        logger.warn(`⚠️ 警告：消息没有 messageId`);
-      }
+      // ⚠️ 不要在解析/入队前 ACK。
+      // 旧逻辑「立刻 socketCallBackResponse」：若随后去重误杀、解析失败、或入队前进程重连，
+      // 钉钉认为已送达，不再重推 → 网关 UI 永远收不到。
+      // 正确：入队成功后再 ACK；失败则不 ACK，让钉钉 ~60s 内重投。
+      let acked = false;
+      const ackMessage = (why: string) => {
+        if (acked || !messageId) return;
+        try {
+          (client as any).socketCallBackResponse(messageId, { success: true });
+          acked = true;
+          logger.info(`✅ 已确认回调 messageId=${messageId} (${why})`);
+        } catch (ackErr: any) {
+          logger.warn(`确认回调失败: ${ackErr?.message || ackErr}`);
+        }
+      };
 
-      // 协议层去重（headers.messageId）：拦截同一次投递的重复回调
-      // 注意：业务层去重（data.msgId）在 JSON 解析后执行，两层合并在 checkAndMarkDingtalkMessage 中
-      // 此处仅做协议层的快速预检，避免不必要的 JSON 解析
-      if (messageId && checkAndMarkDingtalkMessage(accountId, messageId, undefined)) {
-        processedCount++;
-        logger.warn(`⚠️ 检测到重复消息（协议层），跳过处理：messageId=${messageId} (${processedCount}/${receivedCount})`);
-        logger.info(`========== 消息处理结束（重复） ==========\n`);
-        return;
-      }
-
-      // 异步处理消息
-      // ✅ 标记消息处理开始，防止长时间处理触发心跳超时
       markMessageProcessingStart();
-      
+
       try {
         // 解析消息数据
         let data;
@@ -537,10 +825,11 @@ export async function monitorSingleAccount(
           logger.error('Failed to parse response data as JSON:', {
             error: parseError instanceof Error ? parseError.message : String(parseError),
             rawData: typeof res.data === 'string' 
-              ? res.data.substring(0, 500) // 只记录前 500 字符
+              ? res.data.substring(0, 500)
               : res.data,
             dataType: typeof res.data,
           });
+          // 解析失败：不 ACK，允许钉钉重投
           throw new Error(
             `Invalid JSON response from DingTalk API. ` +
             `Error: ${parseError instanceof Error ? parseError.message : String(parseError)}. ` +
@@ -565,24 +854,26 @@ export async function monitorSingleAccount(
         logger.info(
           `RobotCode: ${data.robotCode || account.config?.clientId || "N/A"}`,
         );
-        // 暴露当前机器人的加密身份（chatbotUserId / chatbotCorpId）
-        // 用途：多机器人协作时，把这两个值配进 openclaw.json 对应 account 的元数据下，
-        // 让其他 agent 能在群消息里通过 atDingtalkIds 写上对方的 chatbotUserId 触发 @ UI。
-        // 注意：这里**不**经过 logger.info（受 debug 开关控制），直接 console.log，
-        // 否则首次配置的用户在未开 debug 时永远看不到这两个 ID，无法完成多机器人协作配置。
         if (data.chatbotUserId || data.chatbotCorpId) {
           console.log(
             `[DingTalk:${accountId}] [BotIdentity] accountId=${accountId} chatbotUserId=${data.chatbotUserId || "N/A"} chatbotCorpId=${data.chatbotCorpId || "N/A"}`,
           );
         }
 
-        // ===== 业务层去重：补充 data.msgId，防止钉钉服务端重发穿透 =====
-        // 协议层已标记了 headers.messageId，此处再补充标记 data.msgId。
-        // 钉钉重发时 headers.messageId 是新值，但 data.msgId 不变，
-        // checkAndMarkDingtalkMessage 会命中 data.msgId 并返回 true 拦截重发。
         const businessMsgId = data.msgId;
 
-        // 记录消息内容（简化版，避免过长）
+        // 双层去重：协议 messageId + 业务 msgId（须在解析后一次完成）
+        if (checkAndMarkDingtalkMessage(accountId, messageId, businessMsgId)) {
+          processedCount++;
+          // 重复投递：ACK 掉避免钉钉无限重推
+          ackMessage("duplicate");
+          logger.warn(
+            `⚠️ 检测到重复消息，跳过：protocol=${messageId || "-"} business=${businessMsgId || "-"} (${processedCount}/${receivedCount})`,
+          );
+          logger.info(`========== 消息处理结束（重复） ==========\n`);
+          return;
+        }
+
         let contentPreview = "N/A";
         if (data.text?.content) {
           contentPreview =
@@ -597,7 +888,7 @@ export async function monitorSingleAccount(
         logger.info(`完整数据字段：${Object.keys(data).join(", ")}`);
         logger.info(`----- 消息详情结束 -----\n`);
 
-        // ===== 第三步：开始处理消息 =====
+        // ===== 第三步：入队处理 =====
         logger.info(`🚀 开始处理消息...`);
 
         await messageHandler({
@@ -610,6 +901,10 @@ export async function monitorSingleAccount(
           cfg: clawdbotConfig,
         });
 
+        // 入队/受理成功后再 ACK（handleDingTalkMessage 返回表示已进 session 队列）
+        ackMessage("enqueued");
+        noteSocketAlive("after-enqueue");
+
         processedCount++;
         logger.info(`✅ 消息处理完成 (${processedCount}/${receivedCount})`);
         logger.info(`========== 消息处理结束（成功） ==========\n`);
@@ -618,13 +913,18 @@ export async function monitorSingleAccount(
         const errorMsg = `❌ 处理消息异常 (${processedCount}/${receivedCount}): ${error?.message || "未知错误"}`;
         const errorStack = error?.stack || "无堆栈信息";
         
-        // 使用 logger 记录错误信息
         logger.error(errorMsg);
         logger.error(`错误堆栈:\n${errorStack}`);
         
+        // 未成功入队：故意不 ACK，让钉钉重投（最多约 60s）
+        if (!acked) {
+          logger.warn(
+            `⚠️ 未 ACK messageId=${messageId || "N/A"}，等待钉钉重投（避免网关永久丢消息）`,
+          );
+        }
+        
         logger.info(`========== 消息处理结束（失败） ==========\n`);
       } finally {
-        // ✅ 无论成功或失败，都要标记消息处理结束
         markMessageProcessingEnd();
       }
     });
@@ -637,20 +937,27 @@ export async function monitorSingleAccount(
 
     // Connect to DingTalk Stream
     try {
-      await client.connect();
+      // 注意：registerCallbackListener 必须在 connect 之前（已在上方完成），
+      // 这样 getEndpoint 会把 ROBOT 回调 topic 写进 subscriptions。
+      //
+      // 关键：禁止 OPEN-only 假 ready。
+      // 未收到 SYSTEM/REGISTERED 时会强制多轮 disconnect+connect，
+      // 直到 registered=true 才 onStatusChange(connected)；否则启动失败。
+      await ensureRegisteredConnection(REGISTERED_CONNECT_MAX_ATTEMPTS);
 
-      // 注册 socket 事件监听器（必须在 connect 后，此时 (client as any).socket 已创建）
-      setupPongListener();
-      setupMessageListener();
-      setupCloseListener();
+      noteSocketAlive("initial-ready");
+      connectionEstablishedTime = Date.now();
 
       logger.info(`Connected to DingTalk Stream successfully`);
       logger.info(`PID: ${process.pid}`);
       logger.info(
-        `✅ 自定义 keepAlive: true (10 秒心跳，90 秒超时), 指数退避重连`,
+        `✅ keepAlive: 心跳 ${HEARTBEAT_INTERVAL / 1000}s / 软超时 ${SOFT_STALE_MS / 1000}s×${HARD_RECONNECT_AFTER_MISSES} / ` +
+          `处理中刷新 ${MESSAGE_PROCESSING_KEEPALIVE_MS / 1000}s / 重连冷却 ${MIN_RECONNECT_GAP_MS / 1000}s, ` +
+          `registered=${Boolean((client as any).registered)}`,
       );
+      printConnectionNoticeOnce();
 
-      // 初次连接成功，向框架报告 connected: true
+      // 仅 REGISTERED 成功后才报 connected
       onStatusChange?.({ connected: true, lastConnectedAt: Date.now() });
 
       // 启动自定义心跳检测

@@ -302,11 +302,71 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
   const log = createLoggerFromConfig(account.config, `DingTalk:${accountId}`);
 
   // AI Card 状态管理
-  let currentCardTarget: AICardTarget | null = null;
+  // 即时建卡（earlyCard/preCreatedCard）在 message-handler 已创建并显示「正在召唤大模型」。
+  // 必须在 dispatcher 启动时就挂到 currentCardTarget，否则模型在 startStreaming 之前失败时
+  // onIdle/closeStreaming 会因「无 AI Card」直接跳过，群聊卡永久停在 INPUTING。
+  let currentCardTarget: AICardInstance | null = preCreatedCard ?? null;
   let accumulatedText = "";
   const deliveredFinalTexts = new Set<string>();
   // 防止 startStreaming 在 closeStreaming 之后重新创建新卡片（会导致多余 AI Card）
   let sessionClosed = false;
+  /**
+   * 群聊 fail-before-reply 时 OpenClaw 会把用户可见文案收成 NO_REPLY（静默），
+   * 但 payload 仍带 rawError/isError。normalize 会在 deliver 前丢掉整包，
+   * 导致 closeStreaming 空文本 → answerCard 误定格「思考完成」。
+   * 用 onSkip 捕获后写入此处，供 closeStreaming 定稿错误卡。
+   */
+  let pendingErrorText: string | null = null;
+  if (preCreatedCard && !isDirect) {
+    registerActiveCard(conversationId, preCreatedCard);
+  }
+  if (preCreatedCard) {
+    log.info(
+      `[DingTalk] 启动即挂接即时建卡 currentCardTarget=${preCreatedCard.cardInstanceId} isDirect=${isDirect}`,
+    );
+  }
+
+  /** 从 isError/rawError payload 提取中文错误文案（含被静默丢弃的群聊失败） */
+  const captureErrorFromPayload = (
+    payload: unknown,
+    source: string,
+  ): string | null => {
+    const p = payload as {
+      text?: unknown;
+      isError?: unknown;
+      rawError?: unknown;
+    } | null;
+    if (!p) return null;
+    const raw = readPayloadRawError(p);
+    const text = typeof p.text === "string" ? p.text.trim() : "";
+    const looksSilent =
+      !text ||
+      /^NO_REPLY$/i.test(text) ||
+      text.split(/\s+/).every((t) => /^NO_REPLY$/i.test(t));
+
+    let errorText: string | null = null;
+    if (raw) {
+      errorText = matchModelErrorText(raw, { includeCatchAll: true });
+    }
+    if (!errorText && p.isError && text && !looksSilent) {
+      errorText =
+        matchModelErrorText(text, { includeCatchAll: true }) ?? text;
+    }
+    if (!errorText && (raw || p.isError)) {
+      errorText = MODEL_ERROR_GENERIC;
+    }
+    if (!errorText) return null;
+
+    pendingErrorText = errorText;
+    // 错误文案优先覆盖空/占位累积，供 closeStreaming 使用
+    if (!accumulatedText.trim() || looksSilent) {
+      accumulatedText = errorText;
+    }
+    log.info(
+      `[DingTalk][errorCapture] source=${source} len=${errorText.length} preview=${errorText.slice(0, 60)}`,
+    );
+    return errorText;
+  };
   
   // 异步模式：累积完整响应
   let asyncModeFullResponse = "";
@@ -545,12 +605,13 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
       }
     };
 
-    streamWriteChain = streamWriteChain
-      .then(() => runWrite(force))
-      .catch((e) => {
-        log.warn(`[DingTalk][stream] 队列任务失败（不中断后续）：${e?.message || e}`);
-      });
-    return streamWriteChain;
+    // 串行链：失败只记日志不阻断后续写；但本次 await 的 Promise 仍要 reject，
+    // 以便 onPartialReply 等调用方能走非 QPS 错误的兜底提示。
+    const writePromise = streamWriteChain.then(() => runWrite(force));
+    streamWriteChain = writePromise.catch((e) => {
+      log.warn(`[DingTalk][stream] 队列任务失败（不中断后续）：${e?.message || e}`);
+    });
+    return writePromise;
   };
 
   /** 定稿前：取消尾随定时器，强制推送全文并等待队列排空 */
@@ -784,12 +845,22 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
       await streamWriteChain;
 
       // 选定最终答案：marker 优先 → lastAnswerText/accumulatedText 取更长 → 剥离尾标记
+      // 群聊模型失败被 OpenClaw 静默（NO_REPLY）时，用 onSkip 捕获的 pendingErrorText
       let finalText = finalClean(pickFinalText());
+      if (!finalText.trim() && pendingErrorText) {
+        finalText = pendingErrorText;
+        log.info(
+          `[DingTalk][closeStreaming] 使用 pendingErrorText 定稿（群聊静默失败恢复），len=${finalText.length}`,
+        );
+      }
       // 是否有真实对话答案（在套兜底文案之前判断）。纯工具进度/无回复时为 false，
       // 用于 answerCard 模式下决定"不另建无文本输出答案卡"。
+      // 错误文案也算「真实内容」——绝不能走「思考完成」空答案分支。
       const hadRealAnswer = finalText.trim().length > 0;
+      // pendingErrorText 非空 ⇒ 本轮是模型/上游异常定稿，禁止走「思考完成」
+      const isErrorFinal = Boolean(pendingErrorText);
       log.info(
-        `[DingTalk][closeStreaming] 最终答案来源=${finalMarkedText !== null ? "marker[-final-]" : (lastAnswerText ? "非reasoning/累积取长" : "accumulatedText兜底")}，长度=${finalText.length}，lastAnswerLen=${lastAnswerText.length}，accLen=${accumulatedText.length}`,
+        `[DingTalk][closeStreaming] 最终答案来源=${finalMarkedText !== null ? "marker[-final-]" : isErrorFinal ? "pendingErrorText" : (lastAnswerText ? "非reasoning/累积取长" : "accumulatedText兜底")}，长度=${finalText.length}，lastAnswerLen=${lastAnswerText.length}，accLen=${accumulatedText.length}，isErrorFinal=${isErrorFinal}`,
       );
 
       // ✅ 如果累积的文本为空，使用默认提示文案
@@ -956,11 +1027,35 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         const answerActToken = Number((account.config as any)?.answerActToken) || 500;
         const answerTokens = estimateTokens(finalText);
 
-        if (!hadRealAnswer) {
+        // ⚠️ 分支顺序有意为之，勿合并：
+        //   1) 错误 final → 单卡定错误文案（绝不能「思考完成」/双卡）
+        //   2) 无真实答案 → 原卡「思考完成」（纯工具轮等）
+        //   3) token ≤ answerActToken → 原卡直接定稿（日常短答）
+        //   4) token >  answerActToken → 原卡思考完成 + 新建答案卡（大答案机制，不可破坏）
+        if (isErrorFinal) {
+          log.info(
+            `[DingTalk][closeStreaming] answerCard 模式：错误定稿原卡（len=${finalText.length}），不建答案卡、不定格思考完成`,
+          );
+          try {
+            await flushCardStream(finalText, cardSnapshot as any);
+          } catch (e: any) {
+            log.warn(`[DingTalk][closeStreaming] 错误终稿 flush 失败（继续 FINISH）：${e?.message || e}`);
+          }
+          await finishAICard(
+            cardSnapshot as any,
+            finalText,
+            account.config as DingtalkConfig,
+            log,
+            undefined,
+            undefined,
+            conversationId,
+          );
+        } else if (!hadRealAnswer) {
+          // 无真实答案：原卡定格「思考完成」（纯工具轮 / 被静默的 NO_REPLY 等）
           log.info(`[DingTalk][closeStreaming] answerCard 模式：无真实答案，仅定格原卡思考完成（不建答案卡）`);
           await finalizeOriginalToDone();
         } else if (answerTokens <= answerActToken) {
-          // 小答案：单卡定稿（不新建答案卡）
+          // 小答案：单卡定稿（不新建答案卡）—— 与错误路径分离，保证阈值逻辑独立
           log.info(`[DingTalk][closeStreaming] answerCard 模式：答案约 ${answerTokens} token ≤ ${answerActToken}，原卡直接定稿（不建答案卡）`);
           try {
             await flushCardStream(finalText, cardSnapshot as any);
@@ -977,7 +1072,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
             conversationId,
           );
         } else {
-          // 大答案：原卡思考完成 + 新建答案卡投全文（双卡机制，保留）
+          // 大答案：原卡思考完成 + 新建答案卡投全文（双卡机制，保留，勿改阈值语义）
           log.info(`[DingTalk][closeStreaming] answerCard 模式：答案约 ${answerTokens} token > ${answerActToken}，原卡思考完成 + 新建答案卡（模板=${answerTplId}）`);
           // 注意：此处故意不把 finalText flush 到原卡，避免长文在原卡慢速流式，再被思考完成盖掉
           await finalizeOriginalToDone();
@@ -1064,16 +1159,110 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
     }
   };
 
+  /**
+   * 统一错误定稿：模型/dispatch 异常时把中文提示写到 AI Card 并 FINISHED。
+   * 供 dispatcher onError 与 message-handler catch（同步 throw）共用。
+   * 不依赖 OpenClaw 返回的 replyOptions.onError（SDK 根本不导出该字段）。
+   */
+  const finalizeDispatchError = async (
+    error: unknown,
+    kind: string = "invoke",
+  ): Promise<void> => {
+    const errorMsg = String(error);
+    log.error(`[DingTalk][finalizeDispatchError] kind=${kind} failed: ${errorMsg}`);
+
+    // 确保卡片已就绪（错误可能在 startStreaming 之前发生）
+    await startStreaming();
+
+    const errorText =
+      matchModelErrorText(errorMsg, { includeCatchAll: true }) ??
+      "⚠️ 模型请求异常，请稍后重试";
+    log.warn(`[DingTalk][finalizeDispatchError] 错误提示: ${errorText.slice(0, 80)}`);
+
+    // 错误文案覆盖既有内容，保证 closeStreaming 定稿的是异常提示而非空/占位
+    pendingErrorText = errorText;
+    accumulatedText = errorText;
+
+    // 卡片还活着 → closeStreaming 会用 accumulatedText 定稿。
+    // 卡片已关 → 跳过，避免对同一张卡重复 finish。
+    // 仅当会话未关闭且卡片引用丢失时恢复 preCreatedCard。
+    if (!currentCardTarget && !sessionClosed) {
+      if (preCreatedCard) {
+        try {
+          currentCardTarget = preCreatedCard;
+          if (!isDirect) {
+            registerActiveCard(conversationId, preCreatedCard);
+          }
+          log.info(
+            `[DingTalk][finalizeDispatchError] 复用即时建卡显示错误（cardInstanceId=${preCreatedCard.cardInstanceId}）`,
+          );
+        } catch (cardErr: any) {
+          log.warn(
+            `[DingTalk][finalizeDispatchError] 复用即时建卡失败：${cardErr.message}，降级发送普通消息`,
+          );
+          try {
+            await sendMessage(
+              account.config as DingtalkConfig,
+              sessionWebhook,
+              accumulatedText,
+              { useMarkdown: false, log: params.runtime.log },
+            );
+          } catch (sendErr: any) {
+            log.error(
+              `[DingTalk][finalizeDispatchError] 降级发送普通消息失败：${sendErr.message}`,
+            );
+          }
+        }
+      } else {
+        log.warn(`[DingTalk][finalizeDispatchError] 无可用 AI Card，降级发送普通消息`);
+        try {
+          await sendMessage(
+            account.config as DingtalkConfig,
+            sessionWebhook,
+            accumulatedText,
+            { useMarkdown: false, log: params.runtime.log },
+          );
+        } catch (sendErr: any) {
+          log.error(
+            `[DingTalk][finalizeDispatchError] 降级发送普通消息失败：${sendErr.message}`,
+          );
+        }
+      }
+    }
+
+    await closeStreaming();
+  };
+
   const { dispatcher, replyOptions, markDispatchIdle } =
     core.channel.reply.createReplyDispatcherWithTyping({
       ...prefixOptions,
       humanDelay: core.channel.reply.resolveHumanDelayConfig(cfg, agentId),
+      // OpenClaw 官方钩子：静默/空包在 deliver 前被丢掉时回调（含群聊 fail-before-reply → NO_REPLY）。
+      // 此时 payload 仍带 rawError/isError，必须在此捕获，否则 closeStreaming 会空定稿成「思考完成」。
+      onSkip: (payload: unknown, info: { kind?: string; reason?: string }) => {
+        const raw = readPayloadRawError(payload);
+        const isErr = Boolean((payload as { isError?: unknown } | null)?.isError);
+        // 仅拦截「失败类」静默：isError / rawError。
+        // 模型主动 NO_REPLY（无错误）保持静默——不在此伪造错误文案，避免群聊刷屏。
+        // 此时 earlyCard 仍会由 onIdle→closeStreaming 收尾（思考完成 / 无文本），不会永久转圈。
+        if (!raw && !isErr) {
+          log.info(
+            `[DingTalk][onSkip] kind=${info?.kind} reason=${info?.reason} 非错误静默（NO_REPLY/empty），跳过错误捕获`,
+          );
+          return;
+        }
+        log.warn(
+          `[DingTalk][onSkip] kind=${info?.kind} reason=${info?.reason} isError=${isErr} rawLen=${raw.length}（群聊静默失败常见）`,
+        );
+        captureErrorFromPayload(payload, `onSkip:${info?.kind ?? "?"}:${info?.reason ?? "?"}`);
+      },
       onReplyStart: () => {
         log.info(`[DingTalk][onReplyStart] 开始回复，流式 enabled=${streamingEnabled}`);
         // 每次 onReplyStart 都是全新的回复周期，清空去重集合 + 标记认定状态
         deliveredFinalTexts.clear();
         finalMarkedText = null;
         lastAnswerText = "";
+        pendingErrorText = null;
         processMarkerLogged = false;
         finalMarkerLogged = false;
         markerSystemActive = false;
@@ -1096,6 +1285,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         // rawError 为空 = 正常回复 / 无原始错误，绝不匹配，避免误伤。
         const rawError = readPayloadRawError(payload);
         if (rawError) {
+          captureErrorFromPayload(payload, `deliver:${info?.kind ?? "?"}`);
           const matchedErrorText = matchModelErrorText(rawError, {
             includeCatchAll: true,
           });
@@ -1120,19 +1310,40 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         // 工具失败/状态通知 payload：流式时可短暂展示，但绝不计入最终答案（不设 accumulatedText / 不当 final）。
         // 修复：dws 等工具调用失败的结果偶发被当成最终答案、提前停渲染。
         if (isNonAnswerPayload(payload)) {
+          const isModelErrorFinal =
+            Boolean((payload as any).isError) && info?.kind === "final" && Boolean(text.trim());
+
+          // ✅ 上游模型异常 final：必须写入 accumulatedText，供 closeStreaming 定稿。
+          // 工具失败 (kind=tool) 仍不计入最终答案。
+          if (isModelErrorFinal) {
+            accumulatedText = text;
+            log.info(
+              `[DingTalk][deliver] 将上游异常 final 文本存入 accumulatedText（len=${text.length}），防止 onIdle 覆盖`,
+            );
+          } else if ((payload as any).isError && !accumulatedText.trim() && text.trim()) {
+            accumulatedText = text;
+            log.info(
+              `[DingTalk][deliver] 将上游异常 payload 文本存入 accumulatedText（len=${text.length}），防止 onIdle 覆盖`,
+            );
+          }
+
           if (streamingEnabled && currentCardTarget && !asyncMode && finalMarkedText === null) {
             try {
-              await enqueueCardStream(displayClean(text));
+              // 模型错误 final 强制刷卡，避免节流丢最后一帧，群聊卡仍停在「正在召唤大模型」
+              await enqueueCardStream(displayClean(text), {
+                force: isModelErrorFinal,
+              });
             } catch (e: any) {
               if (!isQpsLimitError(e)) log.warn(`[DingTalk][deliver] 状态/错误 payload 写卡失败：${e?.message || e}`);
             }
           }
-          // ✅ 当上游模型异常通过 deliver(final) 到达时，将错误文本存入 accumulatedText，
-          // 防止 onIdle 的兜底覆盖为通用错误文案，并确保 closeStreaming 能读到正确的错误提示。
-          if ((payload as any).isError && !accumulatedText.trim() && text.trim()) {
-            accumulatedText = text;
-            log.info(`[DingTalk][deliver] 将上游异常 payload 文本存入 accumulatedText（len=${text.length}），防止 onIdle 覆盖`);
+
+          // 模型错误 final：主动定稿，不单靠 onIdle（群聊 throw/无 partial 时 onIdle 可能找不到卡）
+          if (isModelErrorFinal) {
+            log.info(`[DingTalk][deliver] 上游 isError final，主动 closeStreaming 定稿错误卡`);
+            await closeStreaming();
           }
+
           log.info(`[DingTalk][deliver] 非答案 payload（isError=${(payload as any).isError},isStatusNotice=${(payload as any).isStatusNotice}），仅展示不计入最终答案`);
           return;
         }
@@ -1320,68 +1531,11 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         }
       },
       onError: async (error, info) => {
-        const errorMsg = String(error);
-        log.error(`[DingTalk][onError] ${info.kind} reply failed: ${errorMsg}`);
+        log.error(`[DingTalk][onError] ${info.kind} reply failed: ${String(error)}`);
         params.runtime.error?.(
-          `dingtalk[${account.accountId}] ${info.kind} reply failed: ${errorMsg}`
+          `dingtalk[${account.accountId}] ${info.kind} reply failed: ${String(error)}`
         );
-
-        // 确保卡片已就绪（错误可能在 startStreaming 之前发生）
-        await startStreaming();
-
-        // 上游模型异常：按错误类型匹配中文提示（与 deliver 共用完整规则表）
-        const errorText =
-          matchModelErrorText(errorMsg, { includeCatchAll: true }) ??
-          "⚠️ 模型请求异常，请稍后重试";
-        log.warn(`[DingTalk][onError] 错误提示: ${errorText.slice(0, 80)}`);
-
-        // 始终写入 accumulatedText（即使 currentCardTarget 已被 onIdle 清空）
-        if (!accumulatedText.trim()) {
-          accumulatedText = errorText;
-        }
-
-        // 卡片还活着 → closeStreaming 会用 accumulatedText 定稿到卡片。
-        // 卡片已关（onIdle 先触发且已复用 preCreatedCard 关闭了会话）→ 跳过，
-        // 避免对同一张卡片重复调用 closeStreaming 导致钉钉 API 报错。
-        // 仅当会话尚未被关闭且卡片引用已丢失时才尝试恢复卡片引用。
-        if (!currentCardTarget && !sessionClosed) {
-          if (preCreatedCard) {
-            // 即时建卡已创建但 startStreaming 未调用（或失败），直接复用
-            try {
-              currentCardTarget = preCreatedCard as any;
-              if (!isDirect) {
-                registerActiveCard(conversationId, preCreatedCard);
-              }
-              log.info(`[DingTalk][onError] 复用即时建卡显示错误（cardInstanceId=${preCreatedCard.cardInstanceId}）`);
-            } catch (cardErr: any) {
-              log.warn(`[DingTalk][onError] 复用即时建卡失败：${cardErr.message}，降级发送普通消息`);
-              try {
-                await sendMessage(
-                  account.config as DingtalkConfig,
-                  sessionWebhook,
-                  accumulatedText,
-                  { useMarkdown: false, log: params.runtime.log }
-                );
-              } catch (sendErr: any) {
-                log.error(`[DingTalk][onError] 降级发送普通消息失败：${sendErr.message}`);
-              }
-            }
-          } else {
-            log.warn(`[DingTalk][onError] 卡片已关闭且无即时建卡，降级发送普通消息`);
-            try {
-              await sendMessage(
-                account.config as DingtalkConfig,
-                sessionWebhook,
-                accumulatedText,
-                { useMarkdown: false, log: params.runtime.log }
-              );
-            } catch (sendErr: any) {
-              log.error(`[DingTalk][onError] 降级发送普通消息失败：${sendErr.message}`);
-            }
-          }
-        }
-
-        await closeStreaming();
+        await finalizeDispatchError(error, info.kind);
         typingCallbacks.onIdle?.();
       },
       onIdle: async () => {
@@ -1397,6 +1551,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
 
   // 构建完整的 replyOptions：replyOptions 只包含 onReplyStart、onTypingController、onTypingCleanup
   // deliver、onError、onIdle、onCleanup 等回调已经在 createReplyDispatcherWithTyping 的参数中定义
+  // finalizeDispatchError 单独导出：OpenClaw 的 replyOptions 不含 onError，message-handler catch 必须直接调用
   return {
     dispatcher,
     replyOptions: {
@@ -1532,5 +1687,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
     },
     markDispatchIdle,
     getAsyncModeResponse: () => asyncModeFullResponse,
+    /** 同步 dispatch 异常时由 message-handler catch 调用，统一 finish 错误卡 */
+    finalizeDispatchError,
   };
 }

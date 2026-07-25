@@ -1,10 +1,10 @@
 <div align="center">
   <img alt="DingTalk" src="https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-openclaw-connector/main/docs/images/dingtalk.svg" width="72" height="72" />
   <h1>dingtalk-openclaw-connector（Community Maintained Fork）</h1>
-  <p>Community maintained fork of the official <strong>v0.8.20</strong> release, tracking and fixing bugs the official team hasn't addressed.<br/>
-  Identical to the official release in functionality — only community-critical fixes applied.</p>
+  <p>Community-enhanced fork based on official <strong>v0.8.24</strong>: adopts official long-connection improvements, plus stronger message delivery, queue feedback, and error-card UX.<br/>
+  Keeps community extras (images, answer cards, first-response UX) and continues to fix issues not yet covered upstream.</p>
 
-  <p><strong>Current published release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.21-fix49</strong> (production-stable; install: <code>npx -y @jeik/dingtalk-connector install</code>).</p>
+  <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.28</strong> (recommended for production; install: <code>npx -y @jeik/dingtalk-connector@0.8.28 install --force</code>).</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,52 +23,45 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.21-fix49 · 2026-07-21 (current)
+### 🚀 v0.8.28 · 2026-07-25 (current)
 
-**Theme: message tool answer card by default (toggle)**
+**Theme: based on official 0.8.24 · steadier connection · fewer lost messages · clearer errors**
 
-| | Change |
-|--|--------|
-| ✨ **`messageAnswerCard`** | **Default `true`**: message body uses static answer card; set `false` for plain text/markdown |
-| 🔧 **Registered** | `schema` + `openclaw.plugin.json` (channels / accounts / uiHints) |
-| 📎 **Independent** | Separate from session-stream `answerCard`; media still uses normal APIs |
+Built on community enhancements, aligned with official **0.8.24** connection work, and focused on real UX: “sent but no reply”, stuck error cards, and missing “queued” feedback.
+
+#### From official 0.8.24
+
+- More reliable long-connection setup and keepalive (fewer “connected but silent” cases)
+- Long AI runs less likely to get cut mid-task by connection flapping
+- Cleaner console logs for easier ops
+
+#### Extra community improvements (what you’ll notice)
+
+| Experience | Effect |
+|------------|--------|
+| 🔗 **Connection** | Marks “connected” only when the bot can actually receive messages; auto-retries instead of faking online |
+| 📩 **Fewer lost messages** | Much better after errors, after a reply finishes, or when sending several messages quickly |
+| ⏳ **Queue feedback** | While the previous message is still running, new messages more reliably show “queued / processing” + thinking reaction |
+| ⚠️ **Model failures** | Billing / no channel / 503-style failures settle into clear Chinese error cards instead of spinning forever |
+| 🃏 **Answer cards & images** | Existing community answer-card and full image-path fixes remain |
 
 ```bash
-npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
+npx -y @jeik/dingtalk-connector@0.8.28 install --force && openclaw gateway restart
 ```
 
-### 📦 v0.8.21-fix47 · 2026-07-20
+### 📦 v0.8.26 · 2026-07-25
 
-`file://` no longer misclassified as remote (grey-image fix).
+Stricter outbound target ID rules (keep `==` suffixes and case).
 
-### 📦 v0.8.21-fix46 · 2026-07-20
+### 📦 v0.8.25 · 2026-07-24
 
-Always-on local MD image diagnostics.
+Sender role/title identity; bare DingTalk IDs as direct chat.
 
-### 📦 v0.8.21-fix45 · 2026-07-20
+### 📦 v0.8.21-fix49 and earlier
 
-Image + download link one bubble · only `![]` · quote cache · residual false-positive fix.
+Answer cards, image path fixes, streaming finalize, Chinese error mapping — see [CHANGELOG.md](CHANGELOG.md).
 
-### 📦 v0.8.21-fix38 · 2026-07-20
-
-Remote `media` download-then-upload.
-
-### 📦 v0.8.21-fix37 · 2026-07-20
-
-Local images (incl. `/mnt`) · `messageImageMd` · LocalImage diagnostics.
-
----
-
-### Earlier releases (summary)
-
-| Date | Highlights |
-|------|------------|
-| 2026-07-14 | **fix31** — serial stream queue; dual-card threshold; error mapping; ACK UX; wizard accountId; drop `cardToolVar`/`cardProcessVar` |
-| 2026-06-29 | Answer-card 500 fix; threshold 500; deferred card create; empty message-card fix; tool progress; wizard upgrades |
-| 2026-06-28 | npm `@jeik/dingtalk-connector`; premature finalization fix |
-| 2026-05 | MD images; multi-turn spam; 4.29 empty reply; WS phantom reconnect |
-
-Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48](docs/RELEASE_NOTES_V0.8.21-fix49.md)
+Full log: [CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md)
 
 ---
 

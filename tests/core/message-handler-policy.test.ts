@@ -36,6 +36,7 @@ vi.mock("../../src/reply-dispatcher.ts", () => ({
     replyOptions: {},
     markDispatchIdle: vi.fn(),
     getAsyncModeResponse: vi.fn(() => ""),
+    finalizeDispatchError: vi.fn(async () => undefined),
   })),
   normalizeSlashCommand: vi.fn((s: string) => s),
 }));

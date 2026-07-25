@@ -67,9 +67,17 @@ import { normalizeSlashCommand } from "../utils/session.ts";
 import { getDingtalkRuntime } from "../runtime.ts";
 import { dingtalkHttp } from '../utils/http-client.ts';
 import { createLoggerFromConfig } from '../utils/index.ts';
+import { trackBackgroundWork } from "../utils/background-work.ts";
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+
+/**
+ * 单条会话队列任务最长执行时间。
+ * 503 重试 + 工具循环偶发挂死时，若不超时，后续同会话消息会永远堵在 previousTask 上，
+ * 表现：连发多条「网关没反应 / 不贴表情」（表情在排队 ACK 或 dequeued 后才贴）。
+ */
+const SESSION_QUEUE_TASK_TIMEOUT_MS = 3 * 60 * 1000; // 3 分钟
 
 // ============ 常量 ============
 
@@ -1645,6 +1653,10 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
   }
 
   // ===== 使用 SDK 的 dispatchReplyFromConfig =====
+  // 提升到 try 外：catch 需要 finish 即时建卡；replyOptions.onError 不存在（OpenClaw 不导出）
+  let earlyCard: AICardInstance | undefined = params.preCreatedCard;
+  let finalizeDispatchError: ((error: unknown, kind?: string) => Promise<void>) | undefined;
+
   try {
     const core = getDingtalkRuntime();
     
@@ -1736,7 +1748,6 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
     const skipAICardForCard = !isDirect && (groupReplyModeForCard === 'text' || groupReplyModeForCard === 'markdown');
     const streamingEnabledForCard = !skipAICardForCard && (config as any).streaming !== false;
 
-    let earlyCard: AICardInstance | undefined = params.preCreatedCard;
     if (!earlyCard && streamingEnabledForCard && !asyncMode) {
       try {
         const earlyTarget: AICardTarget = isDirect
@@ -1757,7 +1768,13 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
     }
 
     // 创建 reply dispatcher，使用解析后的 agentId
-    const { dispatcher, replyOptions, markDispatchIdle, getAsyncModeResponse } = createDingtalkReplyDispatcher({
+    const {
+      dispatcher,
+      replyOptions,
+      markDispatchIdle,
+      getAsyncModeResponse,
+      finalizeDispatchError: finalizeErr,
+    } = createDingtalkReplyDispatcher({
       cfg,
       agentId: matchedAgentId,  // ✅ 使用手动匹配的 agentId
       runtime: runtime as RuntimeEnv,
@@ -1770,6 +1787,7 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
       asyncMode,
       preCreatedCard: earlyCard,
     });
+    finalizeDispatchError = finalizeErr;
 
     // ===== 注入当前 bot 的 clientId（用于 dws CLI --client-id 参数） =====
     // 多 bot 场景下，AI 需要知道当前对话属于哪个 bot，以便在调用
@@ -1905,28 +1923,59 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
 
   } catch (err: any) {
     log?.error?.(`SDK dispatch 失败: ${err.message}`);
-    
-    // 使用与正常回放相同的底层逻辑统一处理错误定稿
-    if (replyOptions?.onError) {
-      log?.info?.(`[DingTalk] 统一错误定稿：调用 replyOptions.onError 处理同步异常`);
-      await replyOptions.onError(err, { kind: 'invoke' });
-    } else {
-      // 极端兜底（理论上必有 onError）
-      const errorText = matchModelErrorText(err.message, { includeCatchAll: true }) ?? `⚠️ 抱歉，处理请求时出错: ${err.message}`;
-      log?.warn?.(`[DingTalk] replyOptions.onError 不存在，走极端兜底纯文本发送`);
+
+    // 统一错误定稿：优先走 dispatcher 的 finalizeDispatchError（finish AI Card + 中文提示）。
+    // 注意：OpenClaw createReplyDispatcherWithTyping 返回的 replyOptions 不含 onError，
+    // 绝不能依赖 replyOptions.onError（会永远 undefined / 甚至 catch 作用域 ReferenceError）。
+    if (finalizeDispatchError) {
       try {
-        const token = await getAccessToken(config);
-        const body: any = { 
-          msgtype: 'text', 
-          text: { content: errorText } 
-        };
-        if (!isDirect) body.at = { atUserIds: [senderId], isAtAll: false };
-        
-        await dingtalkHttp.post(sessionWebhook, body, {
-          headers: { 'x-acs-dingtalk-access-token': token, 'Content-Type': 'application/json' },
-        });
-      } catch (fallbackErr: any) {
-        log?.error?.(`错误消息发送也失败: ${fallbackErr.message}`);
+        log?.info?.(`[DingTalk] 统一错误定稿：调用 finalizeDispatchError 处理同步异常`);
+        await finalizeDispatchError(err, "invoke");
+      } catch (finalizeErr: any) {
+        log?.error?.(`[DingTalk] finalizeDispatchError 失败: ${finalizeErr?.message || finalizeErr}`);
+      }
+    } else {
+      // dispatcher 尚未创建就失败：直接 finish 即时建卡，再不行发纯文本
+      const errorText =
+        matchModelErrorText(err.message, { includeCatchAll: true }) ??
+        `⚠️ 抱歉，处理请求时出错: ${err.message}`;
+      let cardSuccess = false;
+      if (earlyCard) {
+        try {
+          await finishAICard(
+            earlyCard,
+            errorText,
+            config,
+            log,
+            undefined,
+            undefined,
+            data.conversationId,
+          );
+          cardSuccess = true;
+          log?.info?.(`[DingTalk] 极端兜底：finishAICard 错误卡成功`);
+        } catch (cardErr: any) {
+          log?.error?.(`更新错误卡片失败: ${cardErr.message}`);
+        }
+      }
+      if (!cardSuccess) {
+        log?.warn?.(`[DingTalk] 无可用错误定稿路径，走纯文本发送`);
+        try {
+          const token = await getAccessToken(config);
+          const body: any = {
+            msgtype: "text",
+            text: { content: errorText },
+          };
+          if (!isDirect) body.at = { atUserIds: [senderId], isAtAll: false };
+
+          await dingtalkHttp.post(sessionWebhook, body, {
+            headers: {
+              "x-acs-dingtalk-access-token": token,
+              "Content-Type": "application/json",
+            },
+          });
+        } catch (fallbackErr: any) {
+          log?.error?.(`错误消息发送也失败: ${fallbackErr.message}`);
+        }
       }
     }
   }
@@ -2003,89 +2052,131 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
     // 更新会话活跃时间
     sessionLastActivity.set(queueKey, Date.now());
 
-    // 检测队列是否繁忙（入队前检查，此时 previousTask 尚未被当前消息覆盖）
+    // ═══════════════════════════════════════════════════════════
+    // ⚠️ 关键：下面「读 previous → 建 currentTask → set」之间禁止任何 await。
+    // JS 虽是单线程，但 await 会让出执行权；若在 set 之前 await 繁忙 ACK（最多 3s），
+    // 并发第 2/3 条会看到「队列仍只有第 1 条」甚至「空闲」，表现为：
+    //   - 任务进行中连发却不弹排队卡（要发两三次才命中 isQueueBusy）
+    //   - 多条消息错误地 chain 到同一 previous，乱序/并行
+    // ═══════════════════════════════════════════════════════════
+    const previousTask = sessionQueues.get(queueKey) || Promise.resolve();
     const isQueueBusy = sessionQueues.has(queueKey);
 
-    // 获取该会话+agent的上一个处理任务
-    const previousTask = sessionQueues.get(queueKey) || Promise.resolve();
+    // 异步 ACK 写回的卡片：主任务 dequeue 时再读，避免 await ACK 再入队
+    const cardHolder: { card?: AICardInstance; ackDone: boolean } = {
+      card: undefined,
+      ackDone: !isQueueBusy,
+    };
 
-    // 队列繁忙时：根据 groupReplyMode 决定是创建 AI Card 还是发送普通文本 ACK
-    let preCreatedCard: AICardInstance | undefined;
-    if (isQueueBusy) {
-      const ackPhrases = QUEUE_BUSY_ACK_PHRASES;
-      const ackText = ackPhrases[Math.floor(Math.random() * ackPhrases.length)];
-
-      // ✅ 检查 groupReplyMode：text/markdown 模式下不创建 AI Card，改用普通消息发送 ACK
-      const groupReplyMode = config.groupReplyMode || 'aicard';
-      const skipAICard = !isDirect && (groupReplyMode === 'text' || groupReplyMode === 'markdown');
-
-      if (skipAICard) {
-        // text/markdown 模式：使用普通消息发送 ACK，不创建 AI Card
-        try {
-          await sendProactive(config, { openConversationId: data.conversationId }, ackText, {
-            msgType: 'text',
-            useAICard: false,
-            fallbackToNormal: true,
-          });
-          log?.info?.(`[队列] 队列繁忙，已发送普通文本 ACK（groupReplyMode=${groupReplyMode}）`);
-        } catch (ackErr: any) {
-          log?.warn?.(`[队列] 发送普通 ACK 失败: ${ackErr?.message || ackErr}`);
-        }
-        // text/markdown 模式不贴🤔表情（表情是 AI Card 场景的配套功能）
-      } else {
-        // aicard 模式：创建 AI Card 显示排队 ACK
-        const cardTarget: AICardTarget = isDirect
-          ? { type: 'user', userId: senderId }
-          : { type: 'group', openConversationId: data.conversationId };
-
-        try {
-          const card = await createAICardForTarget(config, cardTarget, log);
-          if (card) {
-            // 用 streamAICard 把 ACK 文案写入 Card（INPUTING 状态，表示正在处理中）
-            await streamAICard(card, ackText, false, config, log);
-            preCreatedCard = card;
-            log?.info?.(`[队列] 队列繁忙，已创建排队 ACK Card，cardInstanceId=${card.cardInstanceId}`);
-          } else {
-            log?.warn?.(`[队列] 创建排队 ACK Card 失败（返回 null），跳过 ACK`);
-          }
-          // 在发送 ACK 的同时立即贴上思考中表情，让用户知道消息已被接收
-          addEmotionReply(config, data, log).catch(err => {
-            log?.warn?.(`[队列] 贴排队表情失败: ${err.message}`);
-          });
-        } catch (ackErr: any) {
-          log?.warn?.(`[队列] 创建排队 ACK Card 异常: ${ackErr?.message || ackErr}`);
-        }
-      }
-    }
-
-    // 创建当前消息的处理任务
     const currentTask = previousTask
       .then(async () => {
-        log?.info?.(`[队列] 开始处理消息，queueKey=${queueKey}`);
-        await handleDingTalkMessageInternal({ ...params, preCreatedCard, emotionAlreadyAdded: isQueueBusy });
-        log?.info?.(`[队列] 消息处理完成，queueKey=${queueKey}`);
+        log?.info?.(
+          `[队列] 开始处理消息，queueKey=${queueKey} wasBusy=${isQueueBusy} timeoutMs=${SESSION_QUEUE_TASK_TIMEOUT_MS}`,
+        );
+
+        // 若排队 ACK 仍在建卡，最多再等 2s 拿 preCreatedCard，避免丢复用
+        if (isQueueBusy && !cardHolder.ackDone) {
+          const waitStart = Date.now();
+          while (!cardHolder.ackDone && Date.now() - waitStart < 2_000) {
+            await new Promise((r) => setTimeout(r, 50));
+          }
+        }
+
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            handleDingTalkMessageInternal({
+              ...params,
+              preCreatedCard: cardHolder.card,
+              emotionAlreadyAdded: true,
+            }),
+            new Promise<never>((_, reject) => {
+              timeoutId = setTimeout(() => {
+                reject(
+                  new Error(
+                    `会话队列任务超时（${SESSION_QUEUE_TASK_TIMEOUT_MS}ms），释放队列以免堵死后续消息`,
+                  ),
+                );
+              }, SESSION_QUEUE_TASK_TIMEOUT_MS);
+            }),
+          ]);
+          log?.info?.(`[队列] 消息处理完成，queueKey=${queueKey}`);
+        } finally {
+          if (timeoutId !== undefined) clearTimeout(timeoutId);
+        }
       })
       .catch((err: any) => {
         log?.error?.(`[队列] 消息处理异常，queueKey=${queueKey}, error=${err.message}`);
-        // 不抛出错误，避免阻塞后续消息
       })
       .finally(() => {
-        // 如果当前任务是队列中的最后一个任务，清理队列
         if (sessionQueues.get(queueKey) === currentTask) {
           sessionQueues.delete(queueKey);
           log?.info?.(`[队列] 队列已清空，queueKey=${queueKey}`);
         }
       });
-    
-    // 更新队列
-    sessionQueues.set(queueKey, currentTask);
 
-    // 不等待任务完成，立即返回，不阻塞 WebSocket 消息接收
-    // 消息处理在后台异步执行，队列保证同一会话+agent的消息串行处理
+    // ★ 立刻占槽：必须在任何 await 之前，保证并发入站能看到 isQueueBusy
+    sessionQueues.set(queueKey, currentTask);
+    trackBackgroundWork(currentTask, queueKey);
+    log?.info?.(
+      `[队列] 已登记 queueKey=${queueKey} busy=${isQueueBusy} depth≈pending`,
+    );
+
+    // ===== 登记之后再做用户反馈（可异步，不再阻塞占槽）=====
+    addEmotionReply(config, data, log).catch((err: any) => {
+      log?.warn?.(`[队列] 即时贴表情失败: ${err?.message || err}`);
+    });
+
+    if (isQueueBusy) {
+      const ackPhrases = QUEUE_BUSY_ACK_PHRASES;
+      const ackText = ackPhrases[Math.floor(Math.random() * ackPhrases.length)];
+      const groupReplyMode = config.groupReplyMode || "aicard";
+      const skipAICard =
+        !isDirect && (groupReplyMode === "text" || groupReplyMode === "markdown");
+
+      // 火并忘记：不 await，避免拖慢本回调、也不挡住下一条消息的占槽
+      void (async () => {
+        try {
+          if (skipAICard) {
+            await sendProactive(
+              config,
+              { openConversationId: data.conversationId },
+              ackText,
+              { msgType: "text", useAICard: false, fallbackToNormal: true },
+            );
+            log?.info?.(
+              `[队列] 队列繁忙，已发送普通文本 ACK（groupReplyMode=${groupReplyMode}）`,
+            );
+          } else {
+            const cardTarget: AICardTarget = isDirect
+              ? { type: "user", userId: senderId }
+              : { type: "group", openConversationId: data.conversationId };
+            const card = await createAICardForTarget(config, cardTarget, log);
+            if (card) {
+              await streamAICard(card, ackText, false, config, log);
+              cardHolder.card = card;
+              log?.info?.(
+                `[队列] 队列繁忙，已创建排队 ACK Card，cardInstanceId=${card.cardInstanceId}`,
+              );
+            } else {
+              log?.warn?.(`[队列] 创建排队 ACK Card 失败（返回 null）`);
+            }
+          }
+        } catch (ackErr: any) {
+          log?.warn?.(`[队列] 繁忙 ACK 异常: ${ackErr?.message || ackErr}`);
+        } finally {
+          cardHolder.ackDone = true;
+        }
+      })();
+    }
+
+    // 立即返回，不阻塞 WebSocket 收下一条
   } catch (err: any) {
     log?.error?.(`[队列] 队列管理异常，直接处理: ${err.message}`);
-    // 如果队列管理失败，直接调用内部处理函数（不阻塞）
-    void handleDingTalkMessageInternal(params);
+    const fallback = handleDingTalkMessageInternal(params).catch((e: any) => {
+      log?.error?.(`[队列] 直接处理也失败: ${e.message}`);
+    });
+    trackBackgroundWork(fallback, "queue-fallback");
   }
 }
 

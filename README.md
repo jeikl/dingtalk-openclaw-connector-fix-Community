@@ -1,10 +1,10 @@
 <div align="center">
   <img alt="DingTalk" src="https://raw.githubusercontent.com/DingTalk-Real-AI/dingtalk-openclaw-connector/main/docs/images/dingtalk.svg" width="72" height="72" />
   <h1>dingtalk-openclaw-connector（社区维护版）</h1>
-  <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
-  功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
+  <p>基于官方最新 <strong>v0.8.24</strong> 的社区增强版：吸收官方长连接改进，并重点优化消息接收、排队反馈与模型错误展示。<br/>
+  保留社区在图片、答案卡、首响体验上的增强，持续修官方暂未覆盖的实际使用问题。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.26</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.26.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.28</strong>（推荐生产；一键安装：`npx -y @jeik/dingtalk-connector@0.8.28 install --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,60 +23,45 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.26 · 2026-07-25（当前正式版）
+### 🚀 v0.8.28 · 2026-07-25（当前正式版）
 
-**主题：目标 ID 填写约束强化 + 特殊字符后缀与大小写保留**
+**主题：基于官方 0.8.24 · 长连接更稳 · 消息少丢 · 错误提示更清楚**
 
-| | 改动 |
-|--|------|
-| 🎯 **目标 ID 约束强化** | 出站消息回复指引强化，约束 target ID 完整保留 Base64/特殊字符后缀（如 `==`、`=`）与大小写 |
+本版在社区增强能力之上，对齐官方 **0.8.24** 的连接改进，并重点打磨「发了消息却没反应」「错误卡卡住」「排队提示不出现」等真实使用体验。
 
-| | 改动 |
-|--|------|
-| 👤 **发送人岗位与身份** | 自动前置推送发送人真名、岗位 (Title)、入职时间及老板/主管角色信息 |
-| 🎯 **`targets` 解析修复** | 无前缀裸钉钉用户 ID 自动智能推导为 `direct`（单聊）类型 |
-| 🛠️ **消息处理增强** | 消息处理器底层逻辑优化与工具库稳定性提升 |
+#### 基于官方 0.8.24 吸收了什么
+
+- 更稳妥的长连接建立与保活方式，减少假死、误重连
+- 机器人处理长任务时连接不易被中途掐断
+- 控制台少刷无用日志，排障更清爽
+
+#### 社区本版额外优化（你会感受到的效果）
+
+| 体验 | 效果 |
+|------|------|
+| 🔗 **连接更靠谱** | 只有真正能收消息时才显示「已连接」；连不上会自动多试几轮，而不是假装在线 |
+| 📩 **消息更少丢** | 明显缓解：连发多条、错误回复后、任务刚结束时「发了没进网关」的情况 |
+| ⏳ **排队反馈更及时** | 上一条还在处理时再发，更容易马上看到「已排队 / 处理中」和思考中表情 |
+| ⚠️ **模型故障更好懂** | 欠费、无可用线路、503 等失败时，卡片更容易定格成中文说明，少卡在「正在召唤大模型」 |
+| 🃏 **答案卡 / 图片等** | 社区原有大段答案独立卡片、图片全路径修复等能力继续保留 |
 
 ```bash
-npx -y @jeik/dingtalk-connector install --force && openclaw gateway restart
+npx -y @jeik/dingtalk-connector@0.8.28 install --force && openclaw gateway restart
 ```
 
-### 📦 v0.8.21-fix49 · 2026-07-21
+### 📦 v0.8.26 · 2026-07-25
 
-`message` 工具默认答案卡（可关）；增强模板字段一致。
+目标 ID 填写约束（保留 `==` 等后缀与大小写）。
 
-### 📦 v0.8.21-fix47 · 2026-07-20
+### 📦 v0.8.25 · 2026-07-24
 
-`file://` 本地图误判远程修复（不再 `fetch failed` 灰图）。
+发送人岗位与身份信息；裸钉钉 ID 推导为单聊。
 
-### 📦 v0.8.21-fix46 · 2026-07-20
+### 📦 v0.8.21-fix49 及更早
 
-本地 MD 图灰图诊断日志（LocalImage / MediaIdTrace）。
+答案卡、图片全路径修复、流式定稿、中文错误映射等——详见 [CHANGELOG.md](CHANGELOG.md)。
 
-### 📦 v0.8.21-fix45 · 2026-07-20
-
-图 + 下载链接单气泡 · 只认 `![]` · 引用卡片缓存 · residual 误报修复。
-
-### 📦 v0.8.21-fix38 · 2026-07-20
-
-message 远程 `media` 下载上传。
-
-### 📦 v0.8.21-fix37 · 2026-07-20
-
-本地图（含 `/mnt`）· `messageImageMd` · LocalImage 诊断日志。
-
----
-
-### 更早版本（摘要）
-
-| 日期 | 版本 / 要点 |
-|------|-------------|
-| 2026-07-14 | **fix31** — 流式串行队列防半截；双卡 `answerActToken`；错误中文映射；召唤 ACK；安装向导 accountId 推导；去掉 `cardToolVar`/`cardProcessVar` |
-| 2026-06-29 | 答案卡 500 修复；阈值默认 500；延迟建卡；message 空卡修复；答案卡模式；工具进度展示；过程消息误终稿修复；安装向导增强 |
-| 2026-06-28 | 上线 npm `@jeik/dingtalk-connector`；过程消息提前定稿修复 |
-| 2026-05 | MD 直链/本地图；多轮刷屏；4.29+ 无文本输出；WebSocket 幻影重连 |
-
-完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md) · [Release fix48](docs/RELEASE_NOTES_V0.8.21-fix49.md)
+完整说明：[CHANGELOG.md](CHANGELOG.md) · [FIXES.md](FIXES.md)
 
 ---
 
