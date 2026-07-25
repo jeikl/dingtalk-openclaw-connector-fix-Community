@@ -56,7 +56,7 @@ import {
   uploadAndReplaceFileMarkers
 } from "../services/media/index.ts";
 import { sendProactive, type AICardTarget } from "../services/messaging/index.ts";
-import { createAICardForTarget, streamAICard, registerActiveCard, type AICardInstance } from "../services/messaging/card.ts";
+import { createAICardForTarget, streamAICard, finishAICard, registerActiveCard, type AICardInstance } from "../services/messaging/card.ts";
 import {
   collectCardLookupIds,
   lookupCardContent,
@@ -1912,7 +1912,7 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
     // 如果已经建了 AI Card，则更新报错状态到 Card，避免停留在"正在召唤大模型"
     if (earlyCard) {
       try {
-        await streamAICard(earlyCard, errorText, true, config, log);
+        await finishAICard(earlyCard, errorText, config, log, undefined, undefined, data.conversationId);
       } catch (cardErr: any) {
         log?.error?.(`更新错误卡片失败: ${cardErr.message}`);
       }
