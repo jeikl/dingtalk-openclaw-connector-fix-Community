@@ -1906,22 +1906,14 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
   } catch (err: any) {
     log?.error?.(`SDK dispatch 失败: ${err.message}`);
     
-    // 解析上游错误文本（例如 503 No available channel），匹配中文提示文案
-    const errorText = matchModelErrorText(err.message, { includeCatchAll: true }) ?? `⚠️ 抱歉，处理请求时出错: ${err.message}`;
-
-    // 如果已经建了 AI Card，则更新报错状态到 Card，避免停留在"正在召唤大模型"
-    let cardSuccess = false;
-    if (earlyCard) {
-      try {
-        await finishAICard(earlyCard, errorText, config, log, undefined, undefined, data.conversationId);
-        cardSuccess = true;
-      } catch (cardErr: any) {
-        log?.error?.(`更新错误卡片失败: ${cardErr.message}`);
-      }
-    }
-    
-    if (!cardSuccess) {
-      // 降级：发送错误文本消息
+    // 使用与正常回放相同的底层逻辑统一处理错误定稿
+    if (replyOptions?.onError) {
+      log?.info?.(`[DingTalk] 统一错误定稿：调用 replyOptions.onError 处理同步异常`);
+      await replyOptions.onError(err, { kind: 'invoke' });
+    } else {
+      // 极端兜底（理论上必有 onError）
+      const errorText = matchModelErrorText(err.message, { includeCatchAll: true }) ?? `⚠️ 抱歉，处理请求时出错: ${err.message}`;
+      log?.warn?.(`[DingTalk] replyOptions.onError 不存在，走极端兜底纯文本发送`);
       try {
         const token = await getAccessToken(config);
         const body: any = { 
