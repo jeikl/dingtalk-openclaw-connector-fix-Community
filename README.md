@@ -4,7 +4,7 @@
   <p>基于官方 <strong>v0.8.20</strong> 的社区维护版本，由社区持续跟进修复官方无暇处理的 Bug。<br/>
   功能与官方完全一致，拥有最快的修复速度，及时合并官方pr和个人发现的bug和社区急需的 Bug。</p>
 
-  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.25</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.25.tgz --force`）</p>
+  <p><strong>当前发布版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.26</strong>（稳定生产可用；一键安装：`npx -y @jeik/dingtalk-connector install`；本地 tgz：`openclaw plugins install ./jeik-dingtalk-connector-0.8.26.tgz --force`）</p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,9 +23,13 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.25 · 2026-07-24（当前正式版）
+### 🚀 v0.8.26 · 2026-07-25（当前正式版）
 
-**主题：发送人岗位信息 + 目标 ID 智能推导 + 消息管道优化**
+**主题：目标 ID 填写约束强化 + 特殊字符后缀与大小写保留**
+
+| | 改动 |
+|--|------|
+| 🎯 **目标 ID 约束强化** | 出站消息回复指引强化，约束 target ID 完整保留 Base64/特殊字符后缀（如 `==`、`=`）与大小写 |
 
 | | 改动 |
 |--|------|
