@@ -62,7 +62,7 @@ import {
   lookupCardContent,
 } from "../services/messaging/card-content-cache.ts";
 import { QUEUE_BUSY_ACK_PHRASES } from "../utils/constants.ts";
-import { createDingtalkReplyDispatcher } from "../reply-dispatcher.ts";
+import { createDingtalkReplyDispatcher, matchModelErrorText } from "../reply-dispatcher.ts";
 import { normalizeSlashCommand } from "../utils/session.ts";
 import { getDingtalkRuntime } from "../runtime.ts";
 import { dingtalkHttp } from '../utils/http-client.ts';
@@ -1906,20 +1906,32 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
   } catch (err: any) {
     log?.error?.(`SDK dispatch 失败: ${err.message}`);
     
-    // 降级：发送错误消息
-    try {
-      const token = await getAccessToken(config);
-      const body: any = { 
-        msgtype: 'text', 
-        text: { content: `抱歉，处理请求时出错: ${err.message}` } 
-      };
-      if (!isDirect) body.at = { atUserIds: [senderId], isAtAll: false };
-      
-      await dingtalkHttp.post(sessionWebhook, body, {
-        headers: { 'x-acs-dingtalk-access-token': token, 'Content-Type': 'application/json' },
-      });
-    } catch (fallbackErr: any) {
-      log?.error?.(`错误消息发送也失败: ${fallbackErr.message}`);
+    // 解析上游错误文本（例如 503 No available channel），匹配中文提示文案
+    const errorText = matchModelErrorText(err.message, { includeCatchAll: true }) ?? `⚠️ 抱歉，处理请求时出错: ${err.message}`;
+
+    // 如果已经建了 AI Card，则更新报错状态到 Card，避免停留在"正在召唤大模型"
+    if (earlyCard) {
+      try {
+        await streamAICard(earlyCard, errorText, true, config, log);
+      } catch (cardErr: any) {
+        log?.error?.(`更新错误卡片失败: ${cardErr.message}`);
+      }
+    } else {
+      // 降级：发送错误文本消息
+      try {
+        const token = await getAccessToken(config);
+        const body: any = { 
+          msgtype: 'text', 
+          text: { content: errorText } 
+        };
+        if (!isDirect) body.at = { atUserIds: [senderId], isAtAll: false };
+        
+        await dingtalkHttp.post(sessionWebhook, body, {
+          headers: { 'x-acs-dingtalk-access-token': token, 'Content-Type': 'application/json' },
+        });
+      } catch (fallbackErr: any) {
+        log?.error?.(`错误消息发送也失败: ${fallbackErr.message}`);
+      }
     }
   }
 

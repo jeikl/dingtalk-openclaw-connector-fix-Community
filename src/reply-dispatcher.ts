@@ -239,7 +239,7 @@ const MODEL_ERROR_CATCH_ALL: [RegExp, string] = [/.{20,}/, MODEL_ERROR_GENERIC];
  * @param opts.includeCatchAll 为 true 时启用万能兜底
  * @returns 命中则返回中文提示，未命中返回 null
  */
-function matchModelErrorText(
+export function matchModelErrorText(
   source: string,
   opts?: { includeCatchAll?: boolean },
 ): string | null {
