@@ -674,9 +674,11 @@ export async function finishAICard(
         log?.error?.(
           `[DingTalk][AICard] FINISHED 重试失败：${retryErr.message}`,
         );
+        throw retryErr;
       }
     } else {
       log?.error?.(`[DingTalk][AICard] FINISHED 更新失败：${err.message}`);
+      throw err;
     }
   }
 }

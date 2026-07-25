@@ -1910,13 +1910,17 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
     const errorText = matchModelErrorText(err.message, { includeCatchAll: true }) ?? `⚠️ 抱歉，处理请求时出错: ${err.message}`;
 
     // 如果已经建了 AI Card，则更新报错状态到 Card，避免停留在"正在召唤大模型"
+    let cardSuccess = false;
     if (earlyCard) {
       try {
         await finishAICard(earlyCard, errorText, config, log, undefined, undefined, data.conversationId);
+        cardSuccess = true;
       } catch (cardErr: any) {
         log?.error?.(`更新错误卡片失败: ${cardErr.message}`);
       }
-    } else {
+    }
+    
+    if (!cardSuccess) {
       // 降级：发送错误文本消息
       try {
         const token = await getAccessToken(config);
