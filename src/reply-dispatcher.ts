@@ -1307,6 +1307,25 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           const isModelErrorFinal =
             Boolean((payload as any).isError) && info?.kind === "final" && Boolean(text.trim());
 
+          // Gateway incomplete_turn 误报：会话/流式已有真实答案，却仍发
+          // "Agent couldn't generate a response" isError final。若覆盖 accumulatedText
+          // 并 closeStreaming，钉钉卡会定格错误、后续过程不再流式。
+          // 此时忽略误报，用已有 lastAnswerText/accumulatedText 正常收尾。
+          const existingAnswerText = (lastAnswerText.trim() || accumulatedText.trim()).trim();
+          const isIncompleteTurnFalsePositive =
+            isModelErrorFinal &&
+            /Agent couldn't generate a response/i.test(text) &&
+            existingAnswerText.length >= 20 &&
+            !/Agent couldn't generate a response/i.test(existingAnswerText);
+          if (isIncompleteTurnFalsePositive) {
+            pendingErrorText = null;
+            log.warn(
+              `[DingTalk][deliver] 忽略 incomplete_turn 误报 isError final（卡片已有真实答案 len=${existingAnswerText.length}），不定格错误卡`,
+            );
+            await closeStreaming();
+            return;
+          }
+
           // ✅ 上游模型异常 final：必须写入 accumulatedText，供 closeStreaming 定稿。
           // 工具失败 (kind=tool) 仍不计入最终答案。
           if (isModelErrorFinal) {

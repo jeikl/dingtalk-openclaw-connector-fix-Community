@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.30] - 2026-07-28
+
+### Fixes
+
+- **incomplete_turn 误报不定格错误卡** — 上游 `final + isError` 文案为 `Agent couldn't generate a response`，但卡片已有真实答案（`lastAnswerText`/`accumulatedText` ≥20 字）时，忽略该误报，用已有答案 `closeStreaming`，不再覆盖正文/定格错误（避免网关误报后卡片停止流式）。
+
 ## [0.8.29] - 2026-07-25
 
 ### 主题
