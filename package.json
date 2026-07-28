@@ -1,6 +1,6 @@
 {
   "name": "@jeik/dingtalk-connector",
-  "version": "0.8.31",
+  "version": "0.8.32",
   "description": "OpenClaw DingTalk channel plugin (community) | 钉钉 OpenClaw 社区增强版（基于官方 0.8.24，长连接与消息体验增强）",
   "type": "module",
   "exports": {

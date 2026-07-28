@@ -4,7 +4,7 @@
   <p>基于官方最新 <strong>v0.8.24</strong> 的社区增强版：吸收官方长连接改进，并重点优化消息接收、排队反馈与模型错误展示。<br/>
   保留社区在图片、答案卡、首响体验上的增强，持续修官方暂未覆盖的实际使用问题。</p>
 
-  <p><strong>当前正式版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.31</strong></p>
+  <p><strong>当前正式版：<a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.32</strong></p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,7 +23,7 @@
 
 ## 🔧 最近更新
 
-### 🚀 v0.8.31 · 2026-07-29（当前正式版）
+### 🚀 v0.8.32 · 2026-07-29（当前正式版）
 
 **主题：正式加固 · 日志更干净 · 排障只开 debug**
 
@@ -39,7 +39,7 @@
 
 ### 📦 v0.8.28 · 2026-07-25
 
-基于官方 0.8.24 的长连接与消息体验加固（当前能力已并入 0.8.31）。
+基于官方 0.8.24 的长连接与消息体验加固（当前能力已并入 0.8.32）。
 
 ### 📦 v0.8.26 / 0.8.25 及更早
 
@@ -65,10 +65,10 @@
 npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
 # 2）若装到的不是最新，指定版本号
-npx @jeik/dingtalk-connector@0.8.31 install --force && openclaw gateway restart
+npx @jeik/dingtalk-connector@0.8.32 install --force && openclaw gateway restart
 
 # 3）若仍装不了，强制走 npm 官方源
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.31 install --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.32 install --force && openclaw gateway restart
 ```
 
 ### B）只装插件（凭证已配好时，按顺序试）
@@ -78,10 +78,10 @@ NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.
 openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
 
 # 2）若装到的不是最新，指定版本号
-openclaw plugins install @jeik/dingtalk-connector@0.8.31 --force && openclaw gateway restart
+openclaw plugins install @jeik/dingtalk-connector@0.8.32 --force && openclaw gateway restart
 
 # 3）若仍装不了，强制走 npm 官方源
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.31 --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.32 --force && openclaw gateway restart
 ```
 
 ### 本地 tgz / 源码（开发、离线）
@@ -90,7 +90,7 @@ NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/di
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 npm install && npm run build && npm pack
-openclaw plugins install ./jeik-dingtalk-connector-0.8.31.tgz --force && openclaw gateway restart
+openclaw plugins install ./jeik-dingtalk-connector-0.8.32.tgz --force && openclaw gateway restart
 ```
 
 ### 安装后自检

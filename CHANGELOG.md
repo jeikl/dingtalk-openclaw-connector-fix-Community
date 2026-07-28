@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.32] - 2026-07-29
+
+### Features
+
+- **安装向导可选 CLI** — `install` 时询问用 `openclaw`(1，默认) 还是 `jeikclaw`(2) 执行 `plugins install`；支持 `--cli 1|2|openclaw|jeikclaw` 非交互。
+
 ## [0.8.31] - 2026-07-29
 
 ### Fixes

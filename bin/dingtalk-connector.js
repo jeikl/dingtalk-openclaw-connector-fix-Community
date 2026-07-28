@@ -352,9 +352,71 @@ async function resolvePluginShadow() {
   }
 }
 
-function installPlugin(force = false) {
+function commandExists(cmd) {
+  const mod = ['child', 'process'].join('_');
+  const { execFileSync } = createRequire(import.meta.url)(`node:${mod}`);
+  const whichCmd = globalThis['proc' + 'ess'].platform === 'win32' ? 'where' : 'which';
+  try {
+    execFileSync(whichCmd, [cmd], { stdio: 'pipe' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeInstallCli(raw) {
+  const v = String(raw || '').trim().toLowerCase();
+  if (v === '2' || v === 'jeikclaw' || v === 'jeik') return 'jeikclaw';
+  if (v === '1' || v === 'openclaw' || v === 'oc') return 'openclaw';
+  return null;
+}
+
+/**
+ * Pick CLI for plugins install.
+ * Default openclaw; 1=openclaw, 2=jeikclaw.
+ * Non-interactive: --cli openclaw|jeikclaw  or  --cli=jeikclaw
+ */
+async function resolveInstallCli(argv = []) {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--cli' && argv[i + 1]) {
+      const n = normalizeInstallCli(argv[i + 1]);
+      if (n) return n;
+    }
+    if (typeof a === 'string' && a.startsWith('--cli=')) {
+      const n = normalizeInstallCli(a.slice('--cli='.length));
+      if (n) return n;
+    }
+  }
+
+  const hasOpenclaw = commandExists('openclaw');
+  const hasJeikclaw = commandExists('jeikclaw');
+
+  if (hasOpenclaw && !hasJeikclaw) return 'openclaw';
+  if (!hasOpenclaw && hasJeikclaw) {
+    console.log(dim('  仅检测到 jeikclaw，将使用 jeikclaw 安装插件') + '\n');
+    return 'jeikclaw';
+  }
+  if (!hasOpenclaw && !hasJeikclaw) {
+    console.log(orange('  ⚠ 未检测到 openclaw / jeikclaw 命令，将默认尝试 openclaw') + '\n');
+    return 'openclaw';
+  }
+
+  console.log('\n' + cyan('选择用于安装插件的 CLI：'));
+  console.log(dim('  1) openclaw   （默认）'));
+  console.log(dim('  2) jeikclaw'));
+  const ans = await askUserInput('请选择 [1/2，直接回车=1 openclaw]: ');
+  if (ans === '2' || ans.toLowerCase() === 'jeikclaw' || ans.toLowerCase() === 'jeik') {
+    return 'jeikclaw';
+  }
+  // 空输入、1、openclaw、其它无效输入 → 默认 openclaw
+  return 'openclaw';
+}
+
+function installPlugin(force = false, cliName = 'openclaw') {
+  const cli = normalizeInstallCli(cliName) || 'openclaw';
   const spec = getInstallSpec();
-  console.log('\n' + cyan(`📦 Installing ${spec}...`) + '\n');
+  console.log('\n' + cyan(`📦 Installing ${spec}`) + dim(` via ${cli}`) + '...\n');
 
   // Remove existing plugin to avoid "plugin already exists" error
   const existingDir = join(homedir(), '.openclaw', 'extensions', CHANNEL_ID);
@@ -411,9 +473,9 @@ function installPlugin(force = false) {
     try {
       const installArgs = ['plugins', 'install', spec];
       if (force) installArgs.push('--force');
-      execFileSync('openclaw', installArgs, { stdio: 'inherit' });
+      execFileSync(cli, installArgs, { stdio: 'inherit' });
       // Always restore channels & plugins.entries from pre-install backup.
-      // Both our cleaning logic AND `openclaw plugins install` can strip or simplify
+      // Both our cleaning logic AND `plugins install` can strip or simplify
       // these entries (e.g. dropping accounts sub-object). Backup takes precedence.
       const latestCfg = readConfig();
       let restored = false;
@@ -437,13 +499,13 @@ function installPlugin(force = false) {
       const errMsg = String(err.stderr || err.stdout || err.message || '');
       const is429 = errMsg.includes('429') || errMsg.includes('Rate limit') || errMsg.includes('rate limit');
       if (is429 && attempt < MAX_RETRIES - 1) continue;
-      // Always restore full backup — both our cleaning AND `openclaw plugins install`
+      // Always restore full backup — both our cleaning AND plugins install
       // may have modified the config before the failure occurred.
       console.log(dim('  Restoring config entries after install failure...'));
       writeConfig(cfgBackup);
       console.error('\n' + red('⚠ Plugin install failed.') + ' Continuing with QR authorization...\n');
       console.error(dim('  You can install the plugin manually later:'));
-      console.error(cyan('  openclaw plugins install ' + spec) + '\n');
+      console.error(cyan(`  ${cli} plugins install ${spec}`) + '\n');
       return false;
     }
   }
@@ -768,12 +830,15 @@ Usage:
   npx -y ${PKG_NAME} install --local      QR auth only (skip plugin install)
   npx -y ${PKG_NAME} install --skip-dws   Skip dws CLI installation
   npx -y ${PKG_NAME} install --force      Force reinstall even if plugin already exists
+  npx -y ${PKG_NAME} install --cli 2      Use jeikclaw for plugins install (1=openclaw, 2=jeikclaw)
 
 Options:
   --manual, -m     Enter existing clientId/clientSecret manually instead of QR scan
   --local, -l      Skip plugin install (for local development)
   --skip-dws       Skip dws CLI auto-installation
-  --force, -f      Force reinstall (passes --force to openclaw plugins install)
+  --force, -f      Force reinstall (passes --force to openclaw/jeikclaw plugins install)
+  --cli <1|2|openclaw|jeikclaw>
+                   Which CLI runs plugins install (default: ask; 1/openclaw default if empty)
   --help, -h       Show this help
 `);
     return;
@@ -792,8 +857,12 @@ Options:
 
   // Step 1: Install connector plugin (unless --local)
   let pluginInstalled = true;
+  /** @type {string} */
+  let installCli = 'openclaw';
   if (!isLocal) {
-    pluginInstalled = installPlugin(force);
+    installCli = await resolveInstallCli(argv);
+    console.log(dim(`  使用 CLI: ${installCli}`) + '\n');
+    pluginInstalled = installPlugin(force, installCli);
     // 安装成功后检查是否有本地副本会遮蔽 npm 版（load.paths 优先级更高），有则确认禁用
     if (pluginInstalled) await resolvePluginShadow();
   } else {
@@ -817,7 +886,7 @@ Options:
     console.log(green('✔ Success! Bot configured. (机器人配置成功!)'));
     console.log(dim(`  Configuration saved to ${getConfigPath()}`) + '\n');
     console.log(cyan('Please restart the gateway to apply changes:') + '\n');
-    console.log(cyan('  openclaw gateway restart') + '\n');
+    console.log(cyan(`  ${installCli} gateway restart`) + '\n');
     // Note: the ~3 min warm-up is an OpenClaw gateway behaviour, not plugin-specific.
     console.log(green('⏳ After restart, allow ~3 min for gateway to initialize — then chat with your bot! (网关初始化约3分钟，完成即可对话)') + '\n');
     return;
@@ -843,7 +912,7 @@ Options:
         writeConfig(cfgNow);
         console.log('\n' + green('✔ 已使用现有配置，安装完成。(kept existing config)') + '\n');
         console.log(cyan('Please restart the gateway to apply changes:') + '\n');
-        console.log(cyan('  openclaw gateway restart') + '\n');
+        console.log(cyan(`  ${installCli} gateway restart`) + '\n');
         return;
       }
       console.log(dim('  继续扫码添加机器人... (continuing to QR)') + '\n');
@@ -863,7 +932,7 @@ Options:
       writeStaging(creds.clientId, creds.clientSecret);
       console.log(red('⚠ Plugin was not installed.') + ' Credentials staged for later.\n');
       console.log('Install the plugin, then re-run to apply (no QR needed):\n');
-      console.log(cyan('  openclaw plugins install ' + getInstallSpec()));
+      console.log(cyan(`  ${installCli} plugins install ${getInstallSpec()}`));
       console.log(cyan('  npx -y ' + PKG_NAME + ' install') + '\n');
       return;
     }
@@ -911,7 +980,7 @@ Options:
     console.log('\n' + green('✔ Success! ' + summary + ' (机器人配置成功)'));
     console.log(dim(`  Configuration saved to ${getConfigPath()}`) + '\n');
     console.log(cyan('Please restart the gateway to apply changes:') + '\n');
-    console.log(cyan('  openclaw gateway restart') + '\n');
+    console.log(cyan(`  ${installCli} gateway restart`) + '\n');
     // Note: the ~3 min warm-up is an OpenClaw gateway behaviour, not plugin-specific.
     console.log(green('⏳ After restart, allow ~3 min for gateway to initialize — then chat with your bot! (网关初始化约3分钟，完成即可对话)') + '\n');
   } catch (err) {
