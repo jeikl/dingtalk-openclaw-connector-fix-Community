@@ -4,7 +4,7 @@
   <p>Community-enhanced fork based on official <strong>v0.8.24</strong>: adopts official long-connection improvements, plus stronger message delivery, queue feedback, and error-card UX.<br/>
   Keeps <strong>this repo’s unique</strong> extras (images, answer cards, first-response UX) and continues to fix issues not yet covered upstream.</p>
 
-  <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.30</strong></p>
+  <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.31</strong></p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,7 +23,7 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.30 · 2026-07-29 (current)
+### 🚀 v0.8.31 · 2026-07-29 (current)
 
 **Theme: production hardening · quieter logs · debug config only**
 
@@ -39,7 +39,7 @@ Built on **0.8.28** (steadier connection / fewer lost messages / clearer error c
 
 ### 📦 v0.8.28 · 2026-07-25
 
-Official 0.8.24-aligned connection & delivery hardening (included in 0.8.30).
+Official 0.8.24-aligned connection & delivery hardening (included in 0.8.31).
 
 ### 📦 v0.8.26 / 0.8.25 and earlier
 
@@ -65,10 +65,10 @@ Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingta
 npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
 # 2) If you did not get the latest, pin the version
-npx @jeik/dingtalk-connector@0.8.30 install --force && openclaw gateway restart
+npx @jeik/dingtalk-connector@0.8.31 install --force && openclaw gateway restart
 
 # 3) If it still fails, force the official npm registry
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.30 install --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.31 install --force && openclaw gateway restart
 ```
 
 ### B) Plugin only (credentials already set; try in order)
@@ -78,10 +78,10 @@ NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.
 openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
 
 # 2) If you did not get the latest, pin the version
-openclaw plugins install @jeik/dingtalk-connector@0.8.30 --force && openclaw gateway restart
+openclaw plugins install @jeik/dingtalk-connector@0.8.31 --force && openclaw gateway restart
 
 # 3) If it still fails, force the official npm registry
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.30 --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.31 --force && openclaw gateway restart
 ```
 
 ### Local tgz / from source (dev / offline)
@@ -90,7 +90,7 @@ NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/di
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 npm install && npm run build && npm pack
-openclaw plugins install ./jeik-dingtalk-connector-0.8.30.tgz --force && openclaw gateway restart
+openclaw plugins install ./jeik-dingtalk-connector-0.8.31.tgz --force && openclaw gateway restart
 ```
 
 ### Smoke check

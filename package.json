@@ -1,6 +1,6 @@
 {
   "name": "@jeik/dingtalk-connector",
-  "version": "0.8.30",
+  "version": "0.8.31",
   "description": "OpenClaw DingTalk channel plugin (community) | 钉钉 OpenClaw 社区增强版（基于官方 0.8.24，长连接与消息体验增强）",
   "type": "module",
   "exports": {
@@ -38,7 +38,8 @@
   ],
   "scripts": {
     "build": "tsdown",
-    "prepublishOnly": "npm run build",
+    "sync:plugin-version": "node scripts/sync-plugin-version.mjs",
+    "prepublishOnly": "npm run sync:plugin-version && npm run build",
     "lint": "echo 'Lint check skipped'",
     "lint:fix": "echo 'Lint fix skipped'",
     "test": "vitest run tests/gateway-methods.unit.test.ts",

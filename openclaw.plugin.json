@@ -1,20 +1,27 @@
 {
   "id": "dingtalk-connector",
   "name": "DingTalk Channel",
-  "version": "0.8.29",
+  "version": "0.8.31",
   "description": "OpenClaw DingTalk channel plugin (community) | 钉钉 OpenClaw 社区增强版",
   "author": "jeik",
   "main": "index.ts",
   "channels": [
     "dingtalk-connector"
   ],
-  "skills": ["./skills"],
+  "skills": [
+    "./skills"
+  ],
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "cardTemplateId": { "type": "string" },
-      "cardContentVar": { "type": "string", "default": "content" }
+      "cardTemplateId": {
+        "type": "string"
+      },
+      "cardContentVar": {
+        "type": "string",
+        "default": "content"
+      }
     }
   },
   "channelConfigs": {

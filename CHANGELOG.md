@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.31] - 2026-07-29
+
+### Fixes
+
+- **manifest 版本自动对齐** — `prepublishOnly` 将 `openclaw.plugin.json` 的 `version` 同步为 `package.json` 版本，避免 `plugins install --force` 后 package 已是新版、inspect 仍显示旧 manifest 版本。
+
 ## [0.8.30] - 2026-07-28
 
 ### Fixes
