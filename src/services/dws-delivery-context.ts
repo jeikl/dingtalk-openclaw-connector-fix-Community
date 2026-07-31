@@ -193,73 +193,100 @@ function resolveModeFromConfigs(cfg: any, accountConfig?: any): DwsDeliveryConte
   return "target";
 }
 
+type OutboundRuntimeApi = {
+  append: (p: any) => Promise<void>;
+  resolveRoute?: (p: any) => Promise<any>;
+  ensureEntry?: (p: any) => Promise<void>;
+  via: string;
+};
+
+/**
+ * 尝试 import 一个候选并校验 append 导出。
+ * 成功返回 API；失败返回 null（由调用方继续降级）。
+ */
+async function tryImportOutboundRuntime(
+  id: string,
+  errors: string[],
+): Promise<OutboundRuntimeApi | null> {
+  try {
+    const oc: any = await import(id);
+    if (typeof oc.appendOutboundMessageDeliveryContext !== "function") {
+      errors.push(`${id}: no appendOutboundMessageDeliveryContext`);
+      return null;
+    }
+    return {
+      append: oc.appendOutboundMessageDeliveryContext.bind(oc),
+      resolveRoute:
+        typeof oc.resolveOutboundSessionRoute === "function"
+          ? oc.resolveOutboundSessionRoute.bind(oc)
+          : undefined,
+      ensureEntry:
+        typeof oc.ensureOutboundSessionEntry === "function"
+          ? oc.ensureOutboundSessionEntry.bind(oc)
+          : undefined,
+      via: id,
+    };
+  } catch (e: any) {
+    errors.push(`${id}: ${e?.message || e}`);
+    return null;
+  }
+}
+
 /**
  * 加载 OC-4 append API。
  *
- * 注意：钉钉插件装在 ~/.openclaw/npm/projects/... 下，Node 从插件路径
- * 解析不到名为 openclaw/jeikclaw 的 package（包名还可能是 jeikclaw）。
- * 必须用 gateway 进程入口（process.argv[1]）定位 dist/plugin-sdk。
+ * 降级策略（严格优先 openclaw，导不进去再 jeikclaw）：
+ *  1) 包名 import：openclaw/* → jeikclaw/*
+ *  2) createRequire 从 gateway 入口 resolve 包：openclaw → jeikclaw
+ *  3) 文件系统：gateway argv[1] 旁 dist/plugin-sdk（不区分包名，作最后兜底）
+ *  4) 全局 node_modules：openclaw → jeikclaw
+ *
+ * 插件装在 ~/.openclaw/npm/projects/... 时，裸 import 包名常失败，
+ * 因此 2/4 会用 gateway 入口 / 全局路径再试一遍。
  */
-async function loadOutboundRuntime(): Promise<{
-  append?: (p: any) => Promise<void>;
-  resolveRoute?: (p: any) => Promise<any>;
-  ensureEntry?: (p: any) => Promise<void>;
-  via?: string;
-} | null> {
+async function loadOutboundRuntime(): Promise<OutboundRuntimeApi | null> {
   const { pathToFileURL } = await import("node:url");
   const path = await import("node:path");
   const fs = await import("node:fs");
   const { createRequire } = await import("node:module");
 
-  const candidates: string[] = [
-    "openclaw/plugin-sdk/outbound-runtime",
-    "jeikclaw/plugin-sdk/outbound-runtime",
-    "jeikclaw/dist/plugin-sdk/outbound-runtime.js",
-    "openclaw/dist/plugin-sdk/outbound-runtime.js",
-  ];
+  const errors: string[] = [];
+  const seen = new Set<string>();
 
-  const pushIfExists = (filePath: string) => {
-    try {
-      if (filePath && fs.existsSync(filePath)) {
-        candidates.push(pathToFileURL(filePath).href);
-      }
-    } catch {
-      /* ignore */
-    }
+  const tryOne = async (id: string): Promise<OutboundRuntimeApi | null> => {
+    if (!id || seen.has(id)) return null;
+    seen.add(id);
+    return tryImportOutboundRuntime(id, errors);
   };
 
-  // gateway 入口通常是 .../jeikclaw/dist/index.js 或 openclaw.mjs
-  const entry = typeof process.argv[1] === "string" ? process.argv[1] : "";
-  if (entry) {
-    const entryDir = path.dirname(path.resolve(entry));
-    // .../dist/index.js → .../dist/plugin-sdk/outbound-runtime.js
-    pushIfExists(path.join(entryDir, "plugin-sdk", "outbound-runtime.js"));
-    // .../openclaw.mjs → .../dist/plugin-sdk/...
-    pushIfExists(path.join(entryDir, "dist", "plugin-sdk", "outbound-runtime.js"));
-    // 再向上找 package root
-    let dir = entryDir;
-    for (let i = 0; i < 5; i++) {
-      const pkgJson = path.join(dir, "package.json");
-      if (fs.existsSync(pkgJson)) {
-        pushIfExists(path.join(dir, "dist", "plugin-sdk", "outbound-runtime.js"));
-        pushIfExists(path.join(dir, "plugin-sdk", "outbound-runtime.js"));
-        break;
-      }
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
+  // ── 1) 包名 import：openclaw 优先，失败再 jeikclaw ──
+  for (const pkg of ["openclaw", "jeikclaw"] as const) {
+    for (const sub of [
+      `${pkg}/plugin-sdk/outbound-runtime`,
+      `${pkg}/dist/plugin-sdk/outbound-runtime.js`,
+    ]) {
+      const hit = await tryOne(sub);
+      if (hit) return hit;
     }
+  }
 
-    // createRequire 从 gateway 入口解析 package 名
+  const entry = typeof process.argv[1] === "string" ? process.argv[1] : "";
+
+  // ── 2) 从 gateway 入口 createRequire：openclaw 优先，再 jeikclaw ──
+  if (entry) {
     try {
       const req = createRequire(pathToFileURL(path.resolve(entry)).href);
-      for (const name of ["jeikclaw", "openclaw"]) {
+      for (const pkg of ["openclaw", "jeikclaw"] as const) {
         try {
-          const pkgJson = req.resolve(`${name}/package.json`);
+          const pkgJson = req.resolve(`${pkg}/package.json`);
           const root = path.dirname(pkgJson);
-          pushIfExists(path.join(root, "dist", "plugin-sdk", "outbound-runtime.js"));
+          const file = path.join(root, "dist", "plugin-sdk", "outbound-runtime.js");
+          if (fs.existsSync(file)) {
+            const hit = await tryOne(pathToFileURL(file).href);
+            if (hit) return hit;
+          }
         } catch {
-          /* ignore */
+          /* 该包名 resolve 失败，试下一个 */
         }
       }
     } catch {
@@ -267,50 +294,62 @@ async function loadOutboundRuntime(): Promise<{
     }
   }
 
-  // 也试 process.execPath 同级的全局 node_modules
+  // ── 3) 文件系统兜底：gateway 入口旁（运行中的就是这份 dist）──
+  if (entry) {
+    const entryDir = path.dirname(path.resolve(entry));
+    const fileCandidates = [
+      path.join(entryDir, "plugin-sdk", "outbound-runtime.js"),
+      path.join(entryDir, "dist", "plugin-sdk", "outbound-runtime.js"),
+    ];
+    let dir = entryDir;
+    for (let i = 0; i < 5; i++) {
+      if (fs.existsSync(path.join(dir, "package.json"))) {
+        fileCandidates.push(
+          path.join(dir, "dist", "plugin-sdk", "outbound-runtime.js"),
+          path.join(dir, "plugin-sdk", "outbound-runtime.js"),
+        );
+        break;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    for (const file of fileCandidates) {
+      if (fs.existsSync(file)) {
+        const hit = await tryOne(pathToFileURL(file).href);
+        if (hit) return hit;
+      }
+    }
+  }
+
+  // ── 4) 全局 node_modules：openclaw 优先，再 jeikclaw ──
   try {
     const execDir = path.dirname(process.execPath);
-    pushIfExists(
-      path.join(execDir, "..", "lib", "node_modules", "jeikclaw", "dist", "plugin-sdk", "outbound-runtime.js"),
-    );
-    pushIfExists(
-      path.join(execDir, "..", "lib", "node_modules", "openclaw", "dist", "plugin-sdk", "outbound-runtime.js"),
-    );
+    for (const pkg of ["openclaw", "jeikclaw"] as const) {
+      const file = path.join(
+        execDir,
+        "..",
+        "lib",
+        "node_modules",
+        pkg,
+        "dist",
+        "plugin-sdk",
+        "outbound-runtime.js",
+      );
+      if (fs.existsSync(file)) {
+        const hit = await tryOne(pathToFileURL(file).href);
+        if (hit) return hit;
+      }
+    }
   } catch {
     /* ignore */
   }
 
-  const errors: string[] = [];
-  const seen = new Set<string>();
-  for (const id of candidates) {
-    if (!id || seen.has(id)) continue;
-    seen.add(id);
-    try {
-      const oc: any = await import(id);
-      if (typeof oc.appendOutboundMessageDeliveryContext === "function") {
-        return {
-          append: oc.appendOutboundMessageDeliveryContext.bind(oc),
-          resolveRoute:
-            typeof oc.resolveOutboundSessionRoute === "function"
-              ? oc.resolveOutboundSessionRoute.bind(oc)
-              : undefined,
-          ensureEntry:
-            typeof oc.ensureOutboundSessionEntry === "function"
-              ? oc.ensureOutboundSessionEntry.bind(oc)
-              : undefined,
-          via: id,
-        };
-      }
-      errors.push(`${id}: no append export`);
-    } catch (e: any) {
-      errors.push(`${id}: ${e?.message || e}`);
-    }
-  }
   if (!warnedMissingApi) {
     warnedMissingApi = true;
     alwaysLog(
       "warn",
-      `无法加载 outbound-runtime。argv1=${entry || "-"} tried=${seen.size} err=${errors.slice(0, 4).join(" | ")}`,
+      `无法加载 outbound-runtime（openclaw→jeikclaw 均失败）。argv1=${entry || "-"} tried=${seen.size} err=${errors.slice(0, 4).join(" | ")}`,
     );
   }
   return null;
