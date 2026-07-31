@@ -274,6 +274,10 @@ export type CreateDingtalkReplyDispatcherParams = {
   asyncMode?: boolean;
   /** 队列繁忙时预先创建的 AI Card，startStreaming 时直接复用而非新建 */
   preCreatedCard?: AICardInstance;
+  /** 当前会话 sessionKey（用于 dws 发消息成功后写 outbound_message） */
+  sessionKey?: string;
+  /** 调用人昵称（dws outbound 上下文 invoker） */
+  senderName?: string;
 };
 
 export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatcherParams) {
@@ -288,6 +292,8 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
     sessionWebhook,
     asyncMode = false,
     preCreatedCard,
+    sessionKey: sourceSessionKey,
+    senderName,
   } = params;
 
   const account = resolveDingtalkAccount({ cfg, accountId });
@@ -1670,6 +1676,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         }
       },
       // ===== 养成系统：监听 dws 命令执行 =====
+      // ===== dws 发消息成功 → outbound_message 上下文注入（OC-4 对齐）=====
       onCommandOutput: (payload: {
         itemId?: string;
         phase?: string;
@@ -1694,6 +1701,34 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
           } else {
             log.info(`[DingTalk][onCommandOutput] dws 命令执行失败，跳过: ${product}，exitCode=${payload.exitCode}`);
           }
+        }
+
+        // dws chat message send* 成功后注入 outbound_message（best-effort，不阻塞）
+        if (payload.phase === 'end' && sourceSessionKey) {
+          const fullCmd =
+            [payload.title, payload.name, payload.output].filter(Boolean).join('\n') || commandText;
+          void import('./services/dws-delivery-context.ts')
+            .then(({ maybeInjectDwsOutboundContext }) =>
+              maybeInjectDwsOutboundContext({
+                cfg,
+                accountConfig: account.config,
+                agentId,
+                accountId,
+                sourceSessionKey,
+                invokerId: senderId,
+                invokerName: senderName,
+                commandText: fullCmd,
+                exitCode: payload.exitCode,
+                phase: payload.phase,
+                toolCallId: payload.toolCallId,
+                log,
+              }),
+            )
+            .catch((err: any) => {
+              log.warn?.(
+                `[DingTalk][dwsDeliveryContext] onCommandOutput 钩子异常: ${err?.message || err}`,
+              );
+            });
         }
         // 工具进度改由 onToolStart + 正文同一 cardContentVar 展示，不再写独立 cardToolVar 字段
       },

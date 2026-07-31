@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.33] - 2026-07-31
+
+### Features
+
+- **dws 发消息成功后注入 outbound_message 上下文** — 与 `message` 工具 OC-4 一致：当 agent 通过 `dws chat message send|send-by-bot|reply|send-by-webhook` 发消息成功时，自动向目标会话写入模型可见的出站上下文（来源/调用人/正文/可复制 ID）。  
+  - 配置项 `channels.dingtalk-connector.dwsDeliveryContext`：`target`（默认）/ `source` / `both` / `off`  
+  - **仅叠加**：不影响普通回复与 message 工具；解析失败或非发消息命令时 no-op  
+  - 实现：`src/services/dws-delivery-context.ts` + `onCommandOutput` 钩子；从命令行解析 `--group`/`--user` 后经 `resolveOutboundSessionRoute` 映射 sessionKey  
+  - 依赖 OpenClaw（≥ 本配套版本）`plugin-sdk/outbound-runtime` 导出 `appendOutboundMessageDeliveryContext`
+
+### Docs
+
+- **CHANGELOG / schema / openclaw.plugin.json** — 同步 `dwsDeliveryContext` 字段说明与 UI help。
+
 ## [0.8.32] - 2026-07-29
 
 ### Features

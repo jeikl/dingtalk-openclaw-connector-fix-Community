@@ -1,7 +1,7 @@
 {
   "id": "dingtalk-connector",
   "name": "DingTalk Channel",
-  "version": "0.8.32",
+  "version": "0.8.33",
   "description": "OpenClaw DingTalk channel plugin (community) | 钉钉 OpenClaw 社区增强版",
   "author": "jeik",
   "main": "index.ts",
@@ -269,6 +269,17 @@
               "markdown"
             ]
           },
+          "dwsDeliveryContext": {
+            "type": "string",
+            "enum": [
+              "off",
+              "target",
+              "source",
+              "both"
+            ],
+            "default": "target",
+            "description": "dws CLI 发消息成功后写入 outbound_message 上下文（与 message 工具一致）。target=目标会话（默认）；source=发起会话；both=两边；off=关闭。仅叠加，不影响普通回复/message 工具。"
+          },
           "cardTemplateId": {
             "type": "string"
           },
@@ -522,6 +533,17 @@
                     "markdown"
                   ]
                 },
+                "dwsDeliveryContext": {
+                  "type": "string",
+                  "enum": [
+                    "off",
+                    "target",
+                    "source",
+                    "both"
+                  ],
+                  "default": "target",
+                  "description": "dws CLI 发消息成功后写入 outbound_message 上下文。target=目标会话（默认）；source=发起会话；both=两边；off=关闭。"
+                },
                 "cardTemplateId": {
                   "type": "string"
                 },
@@ -586,6 +608,11 @@
         "channels.dingtalk-connector.groupReplyMode": {
           "label": "Group Reply Mode",
           "help": "群回复形态：aicard（默认，流式 AI 卡）/ text / markdown。text、markdown 时群聊不用 AI 卡，便于多机器人互相 @。",
+          "advanced": true
+        },
+        "channels.dingtalk-connector.dwsDeliveryContext": {
+          "label": "DWS Delivery Context",
+          "help": "dws 发消息成功后注入 outbound_message（与 message 工具一致）。默认 target；设 off 关闭。仅叠加，不影响现有回复。",
           "advanced": true
         },
         "channels.dingtalk-connector.cardTemplateId": {
