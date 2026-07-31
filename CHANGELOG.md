@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.34] - 2026-07-31
+
+### Fixes
+
+- **dwsDeliveryContext 在 jeikclaw 上无法注入** — 插件原先只 `import("openclaw/plugin-sdk/outbound-runtime")`，而生产安装包名为 `jeikclaw`，导致模块解析失败、目标会话写不进 outbound_message。现按顺序尝试 `openclaw` / `jeikclaw` / 从 gateway 入口 resolve 包路径；并改为始终 `console` 输出注入结果，便于无 debug 时排障。解析命令时折叠 shell `\` 续行。
+
 ## [0.8.33] - 2026-07-31
 
 ### Features

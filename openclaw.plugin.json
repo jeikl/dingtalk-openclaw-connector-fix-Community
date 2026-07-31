@@ -1,7 +1,7 @@
 {
   "id": "dingtalk-connector",
   "name": "DingTalk Channel",
-  "version": "0.8.33",
+  "version": "0.8.34",
   "description": "OpenClaw DingTalk channel plugin (community) | 钉钉 OpenClaw 社区增强版",
   "author": "jeik",
   "main": "index.ts",

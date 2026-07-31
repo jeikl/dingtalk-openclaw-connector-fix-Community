@@ -50,6 +50,16 @@ describe("parseDwsSendCommand", () => {
     expect(p!.rawTarget).toBe("cidWOK6s/IIC5KgZAmBeSvWEw==");
     expect(p!.target).toBe("group:cidWOK6s/IIC5KgZAmBeSvWEw==");
   });
+
+  it("normalizes shell backslash continuations", () => {
+    const cmd =
+      'dws chat message send-by-bot \\\n  --robot-code dingxxx \\\n  --group "cidABC==" \\\n  --title "t" \\\n  --text "hello"';
+    const p = parseDwsSendCommand(cmd);
+    expect(p).not.toBeNull();
+    expect(p!.kind).toBe("bot-send");
+    expect(p!.rawTarget).toBe("cidABC==");
+    expect(p!.message).toBe("hello");
+  });
 });
 
 describe("resolveDwsDeliveryContextMode", () => {

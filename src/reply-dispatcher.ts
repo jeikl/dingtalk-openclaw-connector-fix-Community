@@ -1704,31 +1704,42 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         }
 
         // dws chat message send* 成功后注入 outbound_message（best-effort，不阻塞）
-        if (payload.phase === 'end' && sourceSessionKey) {
+        // buildCommandOutputFromToolResultEvent 会把 tool result 标成 phase=end
+        const phase = payload.phase || (payload.exitCode !== undefined ? 'end' : undefined);
+        if (phase === 'end' && sourceSessionKey) {
+          // title 常为命令；output 为 stdout。两者都扫，兼容多行 `\` 续行
           const fullCmd =
-            [payload.title, payload.name, payload.output].filter(Boolean).join('\n') || commandText;
-          void import('./services/dws-delivery-context.ts')
-            .then(({ maybeInjectDwsOutboundContext }) =>
-              maybeInjectDwsOutboundContext({
-                cfg,
-                accountConfig: account.config,
-                agentId,
-                accountId,
-                sourceSessionKey,
-                invokerId: senderId,
-                invokerName: senderName,
-                commandText: fullCmd,
-                exitCode: payload.exitCode,
-                phase: payload.phase,
-                toolCallId: payload.toolCallId,
-                log,
-              }),
-            )
-            .catch((err: any) => {
-              log.warn?.(
-                `[DingTalk][dwsDeliveryContext] onCommandOutput 钩子异常: ${err?.message || err}`,
-              );
-            });
+            [payload.title, payload.name, payload.output, commandText]
+              .filter(Boolean)
+              .join('\n') || '';
+          // 快速过滤：不含 dws 则跳过，避免无意义动态 import
+          if (/\bdws\b/i.test(fullCmd)) {
+            void import('./services/dws-delivery-context.ts')
+              .then(({ maybeInjectDwsOutboundContext }) =>
+                maybeInjectDwsOutboundContext({
+                  cfg,
+                  accountConfig: account.config,
+                  agentId,
+                  accountId,
+                  sourceSessionKey,
+                  invokerId: senderId,
+                  invokerName: senderName,
+                  commandText: fullCmd,
+                  exitCode: payload.exitCode ?? 0,
+                  phase: 'end',
+                  toolCallId: payload.toolCallId,
+                  log,
+                }),
+              )
+              .catch((err: any) => {
+                console.warn(
+                  `[DingTalk][dwsDeliveryContext] onCommandOutput 钩子异常: ${err?.message || err}`,
+                );
+                log.warn?.(
+                  `[DingTalk][dwsDeliveryContext] onCommandOutput 钩子异常: ${err?.message || err}`,
+                );
+              });
+          }
         }
         // 工具进度改由 onToolStart + 正文同一 cardContentVar 展示，不再写独立 cardToolVar 字段
       },
