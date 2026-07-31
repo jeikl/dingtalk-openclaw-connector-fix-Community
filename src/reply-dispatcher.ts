@@ -274,6 +274,10 @@ export type CreateDingtalkReplyDispatcherParams = {
   asyncMode?: boolean;
   /** 队列繁忙时预先创建的 AI Card，startStreaming 时直接复用而非新建 */
   preCreatedCard?: AICardInstance;
+  /** 当前会话 sessionKey（用于 dws 发消息成功后写 outbound_message） */
+  sessionKey?: string;
+  /** 调用人昵称（dws outbound 上下文 invoker） */
+  senderName?: string;
 };
 
 export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatcherParams) {
@@ -288,6 +292,8 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
     sessionWebhook,
     asyncMode = false,
     preCreatedCard,
+    sessionKey: sourceSessionKey,
+    senderName,
   } = params;
 
   const account = resolveDingtalkAccount({ cfg, accountId });
@@ -1670,6 +1676,7 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
         }
       },
       // ===== 养成系统：监听 dws 命令执行 =====
+      // ===== dws 发消息成功 → outbound_message 上下文注入（OC-4 对齐）=====
       onCommandOutput: (payload: {
         itemId?: string;
         phase?: string;
@@ -1693,6 +1700,45 @@ export function createDingtalkReplyDispatcher(params: CreateDingtalkReplyDispatc
             log.info(`[DingTalk][onCommandOutput] 检测到 dws 产品: ${product}，phase=${payload.phase}, exitCode=${payload.exitCode}`);
           } else {
             log.info(`[DingTalk][onCommandOutput] dws 命令执行失败，跳过: ${product}，exitCode=${payload.exitCode}`);
+          }
+        }
+
+        // dws chat message send* 成功后注入 outbound_message（best-effort，不阻塞）
+        // buildCommandOutputFromToolResultEvent 会把 tool result 标成 phase=end
+        const phase = payload.phase || (payload.exitCode !== undefined ? 'end' : undefined);
+        if (phase === 'end' && sourceSessionKey) {
+          // title 常为命令；output 为 stdout。两者都扫，兼容多行 `\` 续行
+          const fullCmd =
+            [payload.title, payload.name, payload.output, commandText]
+              .filter(Boolean)
+              .join('\n') || '';
+          // 快速过滤：不含 dws 则跳过，避免无意义动态 import
+          if (/\bdws\b/i.test(fullCmd)) {
+            void import('./services/dws-delivery-context.ts')
+              .then(({ maybeInjectDwsOutboundContext }) =>
+                maybeInjectDwsOutboundContext({
+                  cfg,
+                  accountConfig: account.config,
+                  agentId,
+                  accountId,
+                  sourceSessionKey,
+                  invokerId: senderId,
+                  invokerName: senderName,
+                  commandText: fullCmd,
+                  exitCode: payload.exitCode ?? 0,
+                  phase: 'end',
+                  toolCallId: payload.toolCallId,
+                  log,
+                }),
+              )
+              .catch((err: any) => {
+                console.warn(
+                  `[DingTalk][dwsDeliveryContext] onCommandOutput 钩子异常: ${err?.message || err}`,
+                );
+                log.warn?.(
+                  `[DingTalk][dwsDeliveryContext] onCommandOutput 钩子异常: ${err?.message || err}`,
+                );
+              });
           }
         }
         // 工具进度改由 onToolStart + 正文同一 cardContentVar 展示，不再写独立 cardToolVar 字段

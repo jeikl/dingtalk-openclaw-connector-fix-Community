@@ -100,6 +100,17 @@ const DingtalkSharedConfigShape = {
    */
   messageAnswerCard: z.boolean().optional(),
   groupReplyMode: GroupReplyModeSchema,
+  /**
+   * dws CLI 发消息成功后，是否写入与 message 工具一致的 outbound_message 上下文。
+   * - target（默认）：写入目标会话（群/好友），对方会话后续能看见「谁让 bot 发了什么」
+   * - source：写入发起会话
+   * - both：两边都写
+   * - off：关闭（完全不改行为）
+   * 仅叠加：不影响普通回复 / message 工具；解析失败或 dws 非发消息命令时 no-op。
+   */
+  dwsDeliveryContext: z
+    .enum(["off", "target", "source", "both"])
+    .optional(),
   /** AI Card 模板 ID，不填则使用官方默认模板 */
   cardTemplateId: z.string().optional(),
   /** AI Card 内容变量名，对应卡片模板中的变量字段，不填默认 content（与默认增强模板一致） */

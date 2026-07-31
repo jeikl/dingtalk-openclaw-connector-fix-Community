@@ -1794,6 +1794,8 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
       sessionWebhook: data.sessionWebhook,
       asyncMode,
       preCreatedCard: earlyCard,
+      sessionKey, // dws 发消息成功后写 outbound_message 用
+      senderName,
     });
     finalizeDispatchError = finalizeErr;
 
