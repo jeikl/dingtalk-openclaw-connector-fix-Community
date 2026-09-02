@@ -200,6 +200,12 @@ const MODEL_ERROR_RULES: [RegExp, string][] = [
     "⚠️ 指定的模型不存在，请检查模型 ID 是否正确",
   ],
 
+  // 用户主动中止（/stop、WebUI Stop、user_abort 等）
+  [
+    /\b(?:aborted|abort|cancelled|canceled|user_abort)\b|The operation was aborted|Dispatch reply operation aborted|Agent was aborted/i,
+    "🛑 任务已中止",
+  ],
+
   // overloaded（严格对齐 OpenClaw：不含 no available channel）
   [
     /\boverloaded(?:_error)?\b|\b(?:selected\s+)?model\s+(?:is\s+)?at capacity\b|\bhigh (?:demand|load)\b|服务过载|当前负载过高|访问量过大/i,

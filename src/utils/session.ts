@@ -3,7 +3,7 @@
  * 构建 OpenClaw 标准会话上下文
  */
 
-import { NEW_SESSION_COMMANDS } from './constants.ts';
+import { NEW_SESSION_COMMANDS, STOP_COMMANDS } from './constants.ts';
 
 /** OpenClaw 标准会话上下文 */
 export interface SessionContext {
@@ -135,10 +135,59 @@ export function buildSessionContext(params: {
 }
 
 /**
- * 检查消息是否是新会话命令
+ * 尝试动态加载 SDK 中的 isAbortRequestText
+ */
+let sdkIsAbortRequestText: ((text?: string, options?: any) => boolean) | null = null;
+try {
+  const mod = await import("openclaw/plugin-sdk/command-primitives-runtime") as any;
+  if (typeof mod.isAbortRequestText === "function") {
+    sdkIsAbortRequestText = mod.isAbortRequestText;
+  }
+} catch {
+  // 忽略加载异常，走内联 fallback
+}
+
+/**
+ * 检查消息是否是中止/停止任务命令
+ * 支持 /stop, stop, 停止, 暂停 等，以及群聊中带 @机器人 /stop 的情况
+ */
+export function isAbortCommand(text?: string): boolean {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+
+  // 1. SDK 原生判断
+  try {
+    if (sdkIsAbortRequestText?.(trimmed)) return true;
+  } catch {}
+
+  // 2. 去除 @ 提及前缀后判断（针对群聊中 @机器人 /stop 的情况）
+  const stripped = trimmed.replace(/@[^\s]+/g, "").trim();
+  if (stripped) {
+    try {
+      if (sdkIsAbortRequestText?.(stripped)) return true;
+    } catch {}
+
+    const lower = stripped.toLowerCase().replace(/^[!/]/, "");
+    if (STOP_COMMANDS.some((cmd) => cmd.toLowerCase().replace(/^[!/]/, "") === lower)) {
+      return true;
+    }
+    if (STOP_COMMANDS.some((cmd) => stripped === cmd)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * 归一化斜杠命令
  */
 export function normalizeSlashCommand(text: string): string {
   const trimmed = text.trim();
+  if (isAbortCommand(trimmed)) {
+    return '/stop';
+  }
   const lower = trimmed.toLowerCase();
   if (NEW_SESSION_COMMANDS.some((cmd) => lower === cmd.toLowerCase())) {
     return '/new';

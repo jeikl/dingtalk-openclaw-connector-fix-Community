@@ -3,6 +3,7 @@ import { __testables } from '../test';
 
 const {
   normalizeSlashCommand,
+  isAbortCommand,
   buildSessionContext,
   isMessageProcessed,
   markMessageProcessed,
@@ -13,6 +14,35 @@ describe('session management helpers', () => {
   beforeEach(() => {
     // 通过多次 cleanup 尽可能清空内部 Map（超过 TTL 的条目会被清理）
     cleanupProcessedMessages();
+  });
+
+  describe('isAbortCommand', () => {
+    it.each([
+      ['/stop', true],
+      [' /stop ', true],
+      ['/STOP', true],
+      ['stop', true],
+      ['/abort', true],
+      ['abort', true],
+      ['停止', true],
+      [' 停止 ', true],
+      ['停下来', true],
+      ['暂停', true],
+      ['取消', true],
+      ['别说了', true],
+      ['闭嘴', true],
+      ['@Bot /stop', true],
+      ['@机器人 停止', true],
+      ['@12345 /abort', true],
+      ['hello', false],
+      ['/new', false],
+      ['/clear', false],
+      ['', false],
+      ['   ', false],
+      ['停止运行其他程序', false],
+    ] as const)('isAbortCommand("%s") -> %s', (input, expected) => {
+      expect(isAbortCommand(input)).toBe(expected);
+    });
   });
 
   describe('normalizeSlashCommand', () => {
@@ -29,6 +59,11 @@ describe('session management helpers', () => {
       ['重新开始', '/new'],
       ['清空对话', '/new'],
       ['  新会话  ', '/new'],
+      ['/stop', '/stop'],
+      [' /stop ', '/stop'],
+      ['stop', '/stop'],
+      ['停止', '/stop'],
+      ['@Bot /stop', '/stop'],
       ['hello', 'hello'],
       [' /not-a-command ', ' /not-a-command '],
       ['/new session', '/new session'],

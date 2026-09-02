@@ -22,6 +22,7 @@ import {
 import {
   buildSessionContext,
   normalizeSlashCommand,
+  isAbortCommand,
 } from "../src/utils/session.ts";
 
 import * as media from "../src/services/media/index.ts";
@@ -314,6 +315,7 @@ export const __testables = {
 
   // session
   normalizeSlashCommand,
+  isAbortCommand,
   buildSessionContext,
   isMessageProcessed,
   markMessageProcessed,

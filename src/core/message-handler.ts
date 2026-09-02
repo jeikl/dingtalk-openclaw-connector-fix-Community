@@ -63,7 +63,7 @@ import {
 } from "../services/messaging/card-content-cache.ts";
 import { QUEUE_BUSY_ACK_PHRASES } from "../utils/constants.ts";
 import { createDingtalkReplyDispatcher, matchModelErrorText } from "../reply-dispatcher.ts";
-import { normalizeSlashCommand } from "../utils/session.ts";
+import { normalizeSlashCommand, isAbortCommand } from "../utils/session.ts";
 import { getDingtalkRuntime } from "../runtime.ts";
 import { dingtalkHttp } from '../utils/http-client.ts';
 import { createLoggerFromConfig, isDingtalkDebug } from '../utils/index.ts';
@@ -100,6 +100,7 @@ const AICardStatus = {
  * 这样不同 agent 可以并发处理，同一 agent 的同一会话串行处理
  */
 const sessionQueues = new Map<string, Promise<void>>();
+const sessionQueueEpoch = new Map<string, number>();
 
 /**
  * 清理过期的会话队列（超过5分钟没有新消息的会话+agent）
@@ -112,6 +113,7 @@ function cleanupExpiredSessionQueues(): void {
   for (const [queueKey, lastActivity] of sessionLastActivity.entries()) {
     if (now - lastActivity > SESSION_QUEUE_TTL) {
       sessionQueues.delete(queueKey);
+      sessionQueueEpoch.delete(queueKey);
       sessionLastActivity.delete(queueKey);
     }
   }
@@ -1630,8 +1632,8 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
   if (!userContent && imageLocalPaths.length === 0) return;
 
   // ===== 贴处理中表情 =====
-  // 若队列繁忙时已在入队阶段提前贴过表情，此处跳过，避免重复贴
-  if (!params.emotionAlreadyAdded) {
+  // 若队列繁忙时已在入队阶段提前贴过表情，或为终止命令，此处跳过
+  if (!params.emotionAlreadyAdded && !isAbortCommand(rawText)) {
     addEmotionReply(config, data, log).catch(err => {
       log?.warn?.(`贴表情失败: ${err.message}`);
     });
@@ -1756,6 +1758,7 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
     const skipAICardForCard = !isDirect && (groupReplyModeForCard === 'text' || groupReplyModeForCard === 'markdown');
     const streamingEnabledForCard = !skipAICardForCard && (config as any).streaming !== false;
 
+    const isAbort = isAbortCommand(rawText);
     if (!earlyCard && streamingEnabledForCard && !asyncMode) {
       try {
         const earlyTarget: AICardTarget = isDirect
@@ -1763,11 +1766,12 @@ export async function handleDingTalkMessageInternal(params: HandleMessageParams)
           : { type: 'group', openConversationId: data.conversationId };
         earlyCard = await createAICardForTarget(config, earlyTarget, log);
         if (earlyCard) {
-          await streamAICard(earlyCard, '🦸 正在召唤大模型…', false, config, log);
+          const earlyLoadingText = isAbort ? '🛑 正在停止当前任务…' : '🦸 正在召唤大模型…';
+          await streamAICard(earlyCard, earlyLoadingText, false, config, log);
           if (!isDirect) {
             registerActiveCard(data.conversationId, earlyCard);
           }
-          log.info('[DingTalk][earlyCard] ✅ 即时建卡成功');
+          log.info(`[DingTalk][earlyCard] ✅ 即时建卡成功 (${isAbort ? '中止任务' : '召唤模型'})`);
         }
       } catch (e: any) {
         log.warn(`[DingTalk][earlyCard] 即时建卡失败（降级延迟建卡）：${e?.message}`);
@@ -2057,6 +2061,55 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
   // - sharedMemoryAcrossConversations: true 时，所有消息共享同一队列
   const queueKey = `${baseSessionId}:${matchedAgentId}`;
 
+  // 提前提取文本，判断是否为中止命令（/stop、停止、@机器人 /stop 等）
+  const content = extractMessageContent(data);
+  const rawText = content.text || '';
+  const isAbort = isAbortCommand(rawText);
+
+  // ★ 优先级穿透：若是终止命令，绝对不入队排队，直接穿透到最顶层立即执行
+  if (isAbort) {
+    log?.info?.(`[队列][Stop] 收到中止命令，穿透队列直接执行: queueKey=${queueKey}, rawText=${rawText}`);
+
+    // 1. 废弃当前队列中可能积压排队的后续任务，防止当前任务停掉后排队旧消息又被唤醒
+    sessionQueueEpoch.set(queueKey, (sessionQueueEpoch.get(queueKey) || 0) + 1);
+    sessionQueues.delete(queueKey);
+
+    // 2. 毫秒级直接调用 Gateway chat.abort，以最快速度停止当前正在运行的底层任务与进程（对齐 WebUI Stop）
+    try {
+      const core = getDingtalkRuntime();
+      const dmScope = cfg.session?.dmScope || 'per-channel-peer';
+      const abortSessionKey = core.channel.routing.buildAgentSessionKey({
+        agentId: matchedAgentId,
+        channel: 'dingtalk-connector',
+        accountId: accountId,
+        peer: {
+          kind: queueSessionContext.chatType,
+          id: queueSessionContext.sessionPeerId,
+        },
+        dmScope: dmScope,
+      });
+      if (core.gateway?.request) {
+        core.gateway.request("chat.abort", {
+          sessionKey: abortSessionKey,
+          agentId: matchedAgentId,
+        }).then((res: any) => {
+          log?.info?.(`[队列][Stop] Gateway chat.abort 成功: ${JSON.stringify(res)}`);
+        }).catch((err: any) => {
+          log?.warn?.(`[队列][Stop] Gateway chat.abort 异常: ${err?.message || err}`);
+        });
+      }
+    } catch (abortErr: any) {
+      log?.warn?.(`[队列][Stop] 快速触发 Gateway abort 失败: ${abortErr?.message || abortErr}`);
+    }
+
+    // 3. 穿透执行 handleDingTalkMessageInternal，走 dispatchReplyFromConfig 的 fastAbort 分支返回停止回文
+    const stopTask = handleDingTalkMessageInternal(params).catch((err: any) => {
+      log?.error?.(`[队列][Stop] 终止消息处理异常: ${err?.message || err}`);
+    });
+    trackBackgroundWork(stopTask, `stop-${queueKey}`);
+    return;
+  }
+
   try {
 
     // 更新会话活跃时间
@@ -2071,6 +2124,7 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
     // ═══════════════════════════════════════════════════════════
     const previousTask = sessionQueues.get(queueKey) || Promise.resolve();
     const isQueueBusy = sessionQueues.has(queueKey);
+    const myEpoch = sessionQueueEpoch.get(queueKey) || 0;
 
     // 异步 ACK 写回的卡片：主任务 dequeue 时再读，避免 await ACK 再入队
     const cardHolder: { card?: AICardInstance; ackDone: boolean } = {
@@ -2080,6 +2134,14 @@ export async function handleDingTalkMessage(params: HandleMessageParams): Promis
 
     const currentTask = previousTask
       .then(async () => {
+        // 检查本任务排队期间队列是否已被 /stop 作废
+        if ((sessionQueueEpoch.get(queueKey) || 0) !== myEpoch) {
+          log?.info?.(
+            `[队列] 任务已被后续 /stop 命令取消，跳过执行: queueKey=${queueKey}`,
+          );
+          return;
+        }
+
         log?.info?.(
           `[队列] 开始处理消息，queueKey=${queueKey} wasBusy=${isQueueBusy} timeoutMs=${SESSION_QUEUE_TASK_TIMEOUT_MS}`,
         );

@@ -5,6 +5,21 @@
 /** 新会话触发命令 */
 export const NEW_SESSION_COMMANDS = ['/new', '/reset', '/clear', '新会话', '重新开始', '清空对话'];
 
+/** 中止/停止触发命令 */
+export const STOP_COMMANDS = [
+  '/stop',
+  '/abort',
+  'stop',
+  'abort',
+  '停止',
+  '停下来',
+  '暂停',
+  '取消',
+  '别说了',
+  '闭嘴',
+  'halt',
+] as const;
+
 /**
  * 媒体类消息类型集合。
  *
