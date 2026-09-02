@@ -134,17 +134,28 @@ export function buildSessionContext(params: {
   };
 }
 
-/**
- * 尝试动态加载 SDK 中的 isAbortRequestText
- */
+import { createRequire } from 'node:module';
+
 let sdkIsAbortRequestText: ((text?: string, options?: any) => boolean) | null = null;
-try {
-  const mod = await import("openclaw/plugin-sdk/command-primitives-runtime") as any;
-  if (typeof mod.isAbortRequestText === "function") {
-    sdkIsAbortRequestText = mod.isAbortRequestText;
+let sdkLoadAttempted = false;
+
+function getSdkAbortDetector(): ((text?: string, options?: any) => boolean) | null {
+  if (!sdkLoadAttempted) {
+    sdkLoadAttempted = true;
+    try {
+      const req = createRequire(import.meta.url);
+      for (const pkg of ['openclaw', 'jeikclaw']) {
+        try {
+          const mod = req(`${pkg}/plugin-sdk/command-primitives-runtime`);
+          if (typeof mod?.isAbortRequestText === 'function') {
+            sdkIsAbortRequestText = mod.isAbortRequestText;
+            break;
+          }
+        } catch {}
+      }
+    } catch {}
   }
-} catch {
-  // 忽略加载异常，走内联 fallback
+  return sdkIsAbortRequestText;
 }
 
 /**
@@ -157,15 +168,16 @@ export function isAbortCommand(text?: string): boolean {
   if (!trimmed) return false;
 
   // 1. SDK 原生判断
+  const detector = getSdkAbortDetector();
   try {
-    if (sdkIsAbortRequestText?.(trimmed)) return true;
+    if (detector?.(trimmed)) return true;
   } catch {}
 
   // 2. 去除 @ 提及前缀后判断（针对群聊中 @机器人 /stop 的情况）
   const stripped = trimmed.replace(/@[^\s]+/g, "").trim();
   if (stripped) {
     try {
-      if (sdkIsAbortRequestText?.(stripped)) return true;
+      if (detector?.(stripped)) return true;
     } catch {}
 
     const lower = stripped.toLowerCase().replace(/^[!/]/, "");

@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.40] - 2026-09-02
+
+### Fixes
+
+- **修复插件导入 SyntaxError (Cannot use 'import.meta' outside a module)** — 移除 `src/utils/session.ts` 中顶层 `await import`（Top-Level Await）。Top-Level Await 会导致 Node 的 `require(esm)` 抛出 `ERR_REQUIRE_ASYNC_MODULE` 并使 OpenClaw 的 CJS/jiti 加载回退链中报错。改为懒加载 `createRequire` 检测 SDK 中止命令，插件完全支持同步 `require` 加载。
+
 ## [0.8.39] - 2026-09-02
 
 ### Features & Fixes
