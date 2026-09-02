@@ -18,6 +18,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { dingtalkPlugin, initDingtalkPluginConfigSchema } from "./src/channel.ts";
 import { setDingtalkRuntime } from "./src/runtime.ts";
 import { registerGatewayMethods } from "./src/gateway-methods.ts";
+import { getCurrentModuleUrl } from "./src/utils/compat.ts";
 
 export { dingtalkPlugin, initDingtalkPluginConfigSchema } from "./src/channel.ts";
 export { setDingtalkRuntime } from "./src/runtime.ts";
@@ -45,8 +46,8 @@ function recordAndCheckLoadPath(api: OpenClawPluginApi): void {
     g[DUPLICATE_LOAD_SYMBOL] = store;
 
     const pluginId = "dingtalk-connector";
-    // import.meta.url 在 ESM 下指向当前 index.mjs 路径，正好是我们要比较的维度
-    const here = typeof import.meta !== "undefined" && import.meta?.url ? String(import.meta.url) : "<unknown>";
+    // 在 CJS 或 ESM 下解析当前模块路径，用于重复加载自检
+    const here = getCurrentModuleUrl("index.mjs");
     const paths = store.get(pluginId) ?? new Set<string>();
     paths.add(here);
     store.set(pluginId, paths);

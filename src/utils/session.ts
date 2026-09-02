@@ -134,7 +134,7 @@ export function buildSessionContext(params: {
   };
 }
 
-import { createRequire } from 'node:module';
+import { getSafeRequire } from './compat.ts';
 
 let sdkIsAbortRequestText: ((text?: string, options?: any) => boolean) | null = null;
 let sdkLoadAttempted = false;
@@ -143,7 +143,7 @@ function getSdkAbortDetector(): ((text?: string, options?: any) => boolean) | nu
   if (!sdkLoadAttempted) {
     sdkLoadAttempted = true;
     try {
-      const req = createRequire(import.meta.url);
+      const req = getSafeRequire();
       for (const pkg of ['openclaw', 'jeikclaw']) {
         try {
           const mod = req(`${pkg}/plugin-sdk/command-primitives-runtime`);

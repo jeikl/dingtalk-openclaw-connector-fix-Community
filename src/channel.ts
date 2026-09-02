@@ -1,4 +1,4 @@
-import { createRequire as nodeCreateRequire } from "node:module";
+import { getSafeRequire } from "./utils/compat.ts";
 import type {
   ChannelPlugin,
   ClawdbotConfig,
@@ -602,7 +602,7 @@ export const dingtalkPlugin: ChannelPlugin<ResolvedDingtalkAccount> = {
  */
 export function initDingtalkPluginConfigSchema(): void {
   if (dingtalkPlugin.configSchema != null) return;
-  const require_ = nodeCreateRequire(import.meta.url);
+  const require_ = getSafeRequire();
   const { buildChannelConfigSchema } = require_("openclaw/plugin-sdk/core");
   (dingtalkPlugin as any).configSchema = buildChannelConfigSchema(DingtalkConfigBaseSchema);
 }

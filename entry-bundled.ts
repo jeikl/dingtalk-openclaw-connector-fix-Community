@@ -9,13 +9,14 @@
  */
 
 import { defineBundledChannelEntry } from "openclaw/plugin-sdk/channel-entry-contract";
+import { getCurrentModuleUrl } from "./src/utils/compat.ts";
 
 export default defineBundledChannelEntry({
   id: "dingtalk-connector",
   name: "DingTalk",
   description:
     "DingTalk (钉钉) channel connector — Stream mode with AI Card streaming",
-  importMetaUrl: import.meta.url,
+  importMetaUrl: getCurrentModuleUrl("entry-bundled.mjs"),
   plugin: {
     specifier: "./index.ts",
     exportName: "dingtalkPlugin",

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.41] - 2026-09-02
+
+### Fixes & Compatibility
+
+- **彻底消除 `import.meta` 与顶层 Await 导致的跨环境兼容问题**：
+  - 移除 `src/reply-dispatcher.ts` 中的顶层 `await import("openclaw/plugin-sdk/channel-runtime")`；
+  - 新增 `src/utils/compat.ts` 跨环境适配模块，统一使用安全 `getSafeRequire` 与 `getCurrentModuleUrl` 替换裸 `import.meta.url` 与 `createRequire(import.meta.url)`；
+  - 杜绝在 Node 22 / Node 24 / jiti 源码转译器 Script 模式下触发 V8 引擎语法错误 `SyntaxError: Cannot use 'import.meta' outside a module`；
+  - 原生 `require()` 与 OpenClaw `jiti` 转译器均可 100% 成功加载。
+
 ## [0.8.40] - 2026-09-02
 
 ### Fixes

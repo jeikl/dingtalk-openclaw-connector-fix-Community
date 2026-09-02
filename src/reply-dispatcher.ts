@@ -17,14 +17,49 @@ interface ReplyPayload {
   [key: string]: any;
 }
 
-// ✅ 动态导入 channel-runtime 模块
-const channelRuntimeModule = await import("openclaw/plugin-sdk/channel-runtime") as any;
+import { getSafeRequire } from "./utils/compat.ts";
 
-const {
-  createReplyPrefixOptions,
-  createTypingCallbacks,
-  logTypingFailure,
-} = channelRuntimeModule;
+let channelRuntimeModule: any = null;
+function getChannelRuntimeModule() {
+  if (!channelRuntimeModule) {
+    try {
+      const req = getSafeRequire();
+      for (const pkg of ["openclaw", "jeikclaw"]) {
+        try {
+          channelRuntimeModule = req(`${pkg}/plugin-sdk/channel-runtime`);
+          if (channelRuntimeModule) break;
+        } catch {}
+      }
+    } catch {}
+  }
+  return channelRuntimeModule || {};
+}
+
+function createReplyPrefixOptions(opts: any) {
+  const mod = getChannelRuntimeModule();
+  if (typeof mod.createReplyPrefixOptions === "function") {
+    return mod.createReplyPrefixOptions(opts);
+  }
+  return { ...opts };
+}
+
+function createTypingCallbacks(opts: any) {
+  const mod = getChannelRuntimeModule();
+  if (typeof mod.createTypingCallbacks === "function") {
+    return mod.createTypingCallbacks(opts);
+  }
+  return {
+    onTypingStart: () => {},
+    onTypingStop: () => {},
+  };
+}
+
+function logTypingFailure(opts: any) {
+  const mod = getChannelRuntimeModule();
+  if (typeof mod.logTypingFailure === "function") {
+    return mod.logTypingFailure(opts);
+  }
+}
 
 import { createLoggerFromConfig, isDingtalkDebug } from "./utils/logger.ts";
 import { CHANNEL_ID } from "./channel.ts";
