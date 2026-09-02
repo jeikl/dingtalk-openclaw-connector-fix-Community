@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.39] - 2026-09-02
+
+### Features & Fixes
+
+- **/stop 中止命令穿透入站队列与即时停止** — 当会话正在执行长任务时，发送 `/stop`、`/abort`、`停止` 等命令不再被当成普通消息排队（不再误触发“上一条还没结束”排队 ACK），而是实现优先级穿透：
+  - 立即调用网关 `chat.abort`，毫秒级终止底层 Agent 与运行进程（对齐 WebUI Stop）；
+  - 自动作废当前会话已排队的其他后续任务，防止任务中止后排队的旧消息被幽灵唤醒；
+  - 穿透执行 `dispatchReplyFromConfig` fastAbort，即时向钉钉回执任务中止；
+  - 优化中止卡片文案为 `🛑 正在停止当前任务…`，原任务卡片因中止退出时定格为 `🛑 任务已中止`（不再报模型请求异常）。
+
 ## [0.8.35] - 2026-07-31
 
 ### Fixes
