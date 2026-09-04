@@ -4,7 +4,7 @@
   <p>Community-enhanced fork based on official <strong>v0.8.24</strong>: adopts official long-connection improvements, plus stronger message delivery, queue feedback, and error-card UX.<br/>
   Keeps <strong>this repo’s unique</strong> extras (images, answer cards, first-response UX) and continues to fix issues not yet covered upstream.</p>
 
-  <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.32</strong></p>
+  <p><strong>Current release: <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector">@jeik/dingtalk-connector</a> v0.8.41</strong></p>
 
   <p>
     <a href="https://www.npmjs.com/package/@jeik/dingtalk-connector"><img src="https://img.shields.io/npm/v/@jeik/dingtalk-connector.svg?style=flat&colorA=18181B&colorB=28CF8D" alt="npm version" /></a>
@@ -23,27 +23,20 @@
 
 ## 🔧 Recent Updates
 
-### 🚀 v0.8.32 · 2026-07-29 (current)
+### 🚀 v0.8.41 · 2026-09-02 (current)
 
-**Theme: production hardening · quieter logs · debug config only**
+**Theme: cross-env compatibility · /stop abort penetration · dws outbound context**
 
-Built on **0.8.28** (steadier connection / fewer lost messages / clearer error cards):
+| Version | Highlights |
+|---------|-----------|
+| v0.8.41 | Eliminate `import.meta` / top-level Await compatibility issues across Node versions and jiti |
+| v0.8.40 | Fix plugin import SyntaxError (`Cannot use 'import.meta' outside a module`) |
+| v0.8.39 | `/stop` command penetrates queue, terminates long-running tasks in milliseconds |
+| v0.8.33–35 | dws message sends inject `outbound_message` context; outbound-runtime openclaw→jeikclaw fallback |
+| v0.8.32 | Install wizard CLI choice (openclaw / jeikclaw); manifest version auto-sync |
+| v0.8.29–31 | Quieter default logs; unified `debug` toggle; `incomplete_turn` false-positive filter |
 
-| Experience | Effect |
-|------------|--------|
-| 🧹 **Quieter by default** | No LocalImage / MediaIdTrace / CardCache spam on normal text replies |
-| 🔍 **Simple debug** | Set `"debug": true` for connection, image, quote, and queue diagnostics (no env vars) |
-| 🔗 **Connection / queue** | Connected only when messages can be received; better multi-send and post-error recovery |
-| ⚠️ **Model failures** | 503 / billing / no-channel settle to clear Chinese cards instead of spinning forever |
-| 🃏 **This repo’s unique extras** | Answer cards, full image paths, first-response UX remain |
-
-### 📦 v0.8.28 · 2026-07-25
-
-Official 0.8.24-aligned connection & delivery hardening (included in 0.8.32).
-
-### 📦 v0.8.26 / 0.8.25 and earlier
-
-Target ID rules, sender identity, answer cards, image fixes — see [CHANGELOG.md](CHANGELOG.md).
+See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 ---
 
@@ -65,10 +58,10 @@ Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingta
 npx @jeik/dingtalk-connector install --force && openclaw gateway restart
 
 # 2) If you did not get the latest, pin the version
-npx @jeik/dingtalk-connector@0.8.32 install --force && openclaw gateway restart
+npx @jeik/dingtalk-connector@0.8.41 install --force && openclaw gateway restart
 
 # 3) If it still fails, force the official npm registry
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.32 install --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.41 install --force && openclaw gateway restart
 ```
 
 ### B) Plugin only (credentials already set; try in order)
@@ -78,10 +71,10 @@ NPM_CONFIG_REGISTRY=https://registry.npmjs.org npx @jeik/dingtalk-connector@0.8.
 openclaw plugins install @jeik/dingtalk-connector --force && openclaw gateway restart
 
 # 2) If you did not get the latest, pin the version
-openclaw plugins install @jeik/dingtalk-connector@0.8.32 --force && openclaw gateway restart
+openclaw plugins install @jeik/dingtalk-connector@0.8.41 --force && openclaw gateway restart
 
 # 3) If it still fails, force the official npm registry
-NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.32 --force && openclaw gateway restart
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/dingtalk-connector@0.8.41 --force && openclaw gateway restart
 ```
 
 ### Local tgz / from source (dev / offline)
@@ -90,7 +83,7 @@ NPM_CONFIG_REGISTRY=https://registry.npmjs.org openclaw plugins install @jeik/di
 git clone https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community.git
 cd dingtalk-openclaw-connector-fix-Community
 npm install && npm run build && npm pack
-openclaw plugins install ./jeik-dingtalk-connector-0.8.32.tgz --force && openclaw gateway restart
+openclaw plugins install ./jeik-dingtalk-connector-0.8.41.tgz --force && openclaw gateway restart
 ```
 
 ### Smoke check
