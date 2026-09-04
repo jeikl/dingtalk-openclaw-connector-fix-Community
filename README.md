@@ -62,6 +62,17 @@
 >
 > 安装：`npm install -g jeikclaw@latest`（与官方 `openclaw` 完全共存，独立 bin 命令）
 
+> 🤖 **再推荐本仓库作者独立维护的 [JeikCode](https://github.com/jeikl/jeikcode)（极速、自主的终端 AI Coding Agent，Rust 驱动）**：
+>
+> 专为大型代码库与复杂业务打造，**更好的上下文管理 + 模型编程性能**，代码索引能力超越 Codex / Grok Build / Claude Code：
+> - 📚 **CodeExplore 自研加权 AST + 中英双语语义检索** — 检索效率提升 **60–70%**、准确率 **90%+**，1 轮内精准命中核心代码，杜绝反复 grep 试错
+> - 🧠 **严格 Append-Only KV Cache 保护** — `sacred_floor` 压缩保护 + `user-wrap.md` 动态末尾包裹，稳定上下文、节省成本
+> - 🔧 **五级工具自愈链 + Loop Guard 熔断** — 陌生模型 JSON 自动修复、3 次失败强换方案，毫秒级参数自愈
+> - ⚡ **跨模型极速编程** — 原生支持 OpenAI / Anthropic / 任意开源协议，4 档思考努力度随时切换（`/effort`）
+> - 🖥️ **WebUI 控制台 + 远程 Serve** — 多实例无头运行，`/webui` 一键开启浏览器控制台
+>
+> 安装：`curl -fsSL https://raw.githubusercontent.com/jeikl/jeikcode/local-dev/scripts/install.sh | bash`（或 `cargo install --path crates/atomcode-cli --bin jeikcode --locked`），详见 [JeikCode README](https://github.com/jeikl/jeikcode)
+
 ### A）npx 一键扫码安装（按顺序试）
 
 ```bash

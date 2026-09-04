@@ -62,6 +62,17 @@ Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingta
 >
 > Install: `npm install -g jeikclaw@latest` (fully coexists with official `openclaw`, separate bin command)
 
+> 🤖 **Also recommended: [JeikCode](https://github.com/jeikl/jeikcode) (super-fast autonomous terminal AI coding agent, Rust-powered) by the same author**:
+>
+> Built for large codebases and complex business logic, with **better context management + model coding performance** — code indexing that surpasses Codex / Grok Build / Claude Code:
+> - 📚 **CodeExplore: weighted AST + bilingual (CN/EN) semantic search** — **60–70%** faster retrieval, **90%+** accuracy, hits core code within one round — no more grep trial and error
+> - 🧠 **Strict Append-Only KV Cache protection** — `sacred_floor` compaction guard + `user-wrap.md` dynamic tail wrapping for stable context and lower cost
+> - 🔧 **5-level tool self-healing chain + Loop Guard** — auto-repairs malformed JSON from unknown models, switches strategy after 3 failures
+> - ⚡ **Cross-model speed** — native OpenAI / Anthropic / any open protocol support, 4-level reasoning effort (`/effort`)
+> - 🖥️ **WebUI console + remote Serve** — headless multi-instance, `/webui` opens browser console
+>
+> Install: `curl -fsSL https://raw.githubusercontent.com/jeikl/jeikcode/local-dev/scripts/install.sh | bash` (or `cargo install --path crates/atomcode-cli --bin jeikcode --locked`), see [JeikCode README](https://github.com/jeikl/jeikcode)
+
 ### A) npx one-command QR install (try in order)
 
 ```bash
