@@ -51,6 +51,17 @@
 
 包名：[`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
+> 💡 **强烈推荐搭配本仓库作者维护的 [JeikClaw](https://github.com/jeikl/openclaw-strontfix-feature)（OpenClaw 增强版）使用**：
+>
+> 官方 OpenClaw 更新到 **2026.8.1** 后插件无法正常使用（见 [issue #3](https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community/issues/3)）。官方设计消耗长任务上下文、维护拖沓。
+>
+> JeikClaw 针对官方 **2026.7.1** 版本做了大面积 BUG 修复，并对任务管理、降级文案、长任务管理、上下文传递做了深度优化，且专门为**钉钉 / Telegram 做了适配**，还增加了：
+> - 🎨 **思考过程 + 工具卡** 可视化（阶段卡落盘、折叠、多轮配色）
+> - 🖼️ **图片识别内网 URL 支持**，以及 **OpenAI / Anthropic 接口的 URL 直传识别**
+> - ⏹️ **/stop 命令穿透** 毫秒级终止长任务
+>
+> 安装：`npm install -g jeikclaw@latest`（与官方 `openclaw` 完全共存，独立 bin 命令）
+
 ### A）npx 一键扫码安装（按顺序试）
 
 ```bash

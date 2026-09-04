@@ -51,6 +51,17 @@ See [CHANGELOG.md](CHANGELOG.md) for the full history.
 
 Package: [`@jeik/dingtalk-connector`](https://www.npmjs.com/package/@jeik/dingtalk-connector)
 
+> 💡 **Highly recommended: pair with [JeikClaw](https://github.com/jeikl/openclaw-strontfix-feature) (enhanced OpenClaw fork by the same author)**:
+>
+> Official OpenClaw **2026.8.1** breaks this plugin (see [issue #3](https://github.com/jeikl/dingtalk-openclaw-connector-fix-Community/issues/3)). Official design burns long-task context and updates slowly.
+>
+> JeikClaw stays on official **2026.7.1** with extensive bug fixes, deep optimization of task management, fallback copy, long-task handling and context passing, plus dedicated **DingTalk / Telegram** adaptation and:
+> - 🎨 **Thinking process + tool cards** visualization (persisted stage cards, collapse, multi-round colors)
+> - 🖼️ **Intranet URL support for image recognition** and **URL direct-feed recognition for OpenAI / Anthropic APIs**
+> - ⏹️ **/stop command penetration** — terminate long-running tasks in milliseconds
+>
+> Install: `npm install -g jeikclaw@latest` (fully coexists with official `openclaw`, separate bin command)
+
 ### A) npx one-command QR install (try in order)
 
 ```bash
